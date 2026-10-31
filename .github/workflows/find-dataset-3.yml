@@ -1,0 +1,14 @@
+name: Find dataset
+
+on:
+  workflow_dispatch:
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install copernicusmarine
+      - run: copernicusmarine describe --product-id OCEANCOLOUR_MED_BGC_L4_NRT_009_142 | grep -o 'cmems_obs-oc_med[A-Za-z0-9_.-]*' | sort -u
