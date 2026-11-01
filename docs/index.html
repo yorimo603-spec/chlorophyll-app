@@ -11,7 +11,7 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 .box{position:absolute;z-index:1000;background:rgba(255,255,255,.92);padding:8px 12px;border-radius:10px;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
 #info{bottom:20px;left:10px}
 #legend{bottom:20px;right:10px}
-#bar{height:12px;width:200px;margin:6px 0 2px;border-radius:6px}
+#bar{height:14px;width:200px;margin:6px 0 2px;border-radius:4px}
 #nums{display:flex;justify-content:space-between;direction:ltr;font-size:12px}
 .leaflet-control-layers{direction:rtl;text-align:right}
 </style>
@@ -26,10 +26,10 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var map = L.map('map', {maxZoom: 12}).setView([36.6, 3.0], 6);
+var map = L.map('map', {maxZoom: 16}).setView([36.6, 3.0], 6);
 
-var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 12, attribution: 'Tiles © Esri'});
-var ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom: 12, maxNativeZoom: 10, attribution: 'Tiles © Esri'});
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 16, maxNativeZoom: 12, attribution: 'Tiles © Esri'});
+var ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom: 16, maxNativeZoom: 10, attribution: 'Tiles © Esri'});
 sat.addTo(map);
 
 map.createPane('depth');
@@ -37,17 +37,17 @@ map.getPane('depth').style.zIndex = 450;
 map.getPane('depth').style.pointerEvents = 'none';
 
 var contours = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
-  layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', attribution: 'Bathymetry © EMODnet'
+  layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', maxZoom: 16, attribution: 'Bathymetry © EMODnet'
 });
 var depthColors = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
-  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.6, pane: 'depth', attribution: 'Bathymetry © EMODnet'
+  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.6, pane: 'depth', maxZoom: 16, attribution: 'Bathymetry © EMODnet'
 });
 contours.addTo(map);
 
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 650;
 map.getPane('labels').style.pointerEvents = 'none';
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {pane: 'labels', maxZoom: 12, maxNativeZoom: 10}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {pane: 'labels', maxZoom: 16, maxNativeZoom: 10}).addTo(map);
 
 L.control.layers(
   {'قمر صناعي': sat, 'خريطة البحر': ocean},
@@ -55,39 +55,26 @@ L.control.layers(
   {collapsed: false}
 ).addTo(map);
 
-var stops = [
-  [0, [38, 70, 200]],
-  [0.25, [0, 190, 230]],
-  [0.5, [40, 220, 120]],
-  [0.75, [255, 225, 40]],
-  [1, [255, 90, 30]]
+var palette = [
+  [30, 40, 160],
+  [20, 110, 240],
+  [0, 200, 255],
+  [0, 230, 150],
+  [120, 235, 60],
+  [255, 240, 0],
+  [255, 160, 0],
+  [255, 60, 0],
+  [190, 0, 60]
 ];
-
-function rgbAt(t) {
-  t = Math.max(0, Math.min(1, t));
-  for (var k = 1; k < stops.length; k++) {
-    if (t <= stops[k][0]) {
-      var a = stops[k - 1], b = stops[k];
-      var u = (t - a[0]) / (b[0] - a[0]);
-      return [
-        Math.round(a[1][0] + (b[1][0] - a[1][0]) * u),
-        Math.round(a[1][1] + (b[1][1] - a[1][1]) * u),
-        Math.round(a[1][2] + (b[1][2] - a[1][2]) * u)
-      ];
-    }
-  }
-  return stops[stops.length - 1][1];
-}
-
-function getT(v) {
-  var t = (Math.log10(v) - Math.log10(0.05)) / (Math.log10(5) - Math.log10(0.05));
-  return Math.max(0, Math.min(1, t));
-}
+var N = palette.length;
+var LMIN = Math.log10(0.05), LMAX = Math.log10(5);
 
 var parts = [];
-for (var s = 0; s < stops.length; s++) {
-  var cc = stops[s][1];
-  parts.push('rgb(' + cc[0] + ',' + cc[1] + ',' + cc[2] + ') ' + (stops[s][0] * 100) + '%');
+for (var s = 0; s < N; s++) {
+  var cc = palette[s];
+  var col = 'rgb(' + cc[0] + ',' + cc[1] + ',' + cc[2] + ')';
+  parts.push(col + ' ' + (s / N * 100) + '%');
+  parts.push(col + ' ' + ((s + 1) / N * 100) + '%');
 }
 document.getElementById('bar').style.background = 'linear-gradient(to right,' + parts.join(',') + ')';
 
@@ -100,8 +87,7 @@ function getDepth(latlng) {
       if (typeof j === 'number') v = j;
       else if (j && typeof j.avg === 'number') v = j.avg;
       else if (j && typeof j.depth === 'number') v = j.depth;
-      if (v === null) return '';
-      if (v >= 0) return '';
+      if (v === null || v >= 0) return '';
       return '<br>العمق: ' + Math.abs(Math.round(v)) + ' متر';
     })
     .catch(function () { return ''; });
@@ -115,32 +101,53 @@ fetch('chl_latest.json?' + Date.now())
     var minLat = Math.min.apply(null, d.lats), maxLat = Math.max.apply(null, d.lats);
     var minLon = Math.min.apply(null, d.lons), maxLon = Math.max.apply(null, d.lons);
 
-    var small = document.createElement('canvas');
-    small.width = nx; small.height = ny;
-    var sctx = small.getContext('2d');
-    var img = sctx.createImageData(nx, ny);
-    for (var i = 0; i < ny; i++) {
-      var row = latAsc ? ny - 1 - i : i;
-      for (var j = 0; j < nx; j++) {
-        var v = d.values[i][j];
-        if (v === null) continue;
-        var t = getT(v);
-        var c = rgbAt(t);
-        var p = (row * nx + j) * 4;
-        img.data[p] = c[0];
-        img.data[p + 1] = c[1];
-        img.data[p + 2] = c[2];
-        img.data[p + 3] = Math.round(255 * (0.45 + 0.5 * t));
+    var grid = new Float32Array(nx * ny);
+    for (var r = 0; r < ny; r++) {
+      var di = latAsc ? ny - 1 - r : r;
+      for (var c = 0; c < nx; c++) {
+        var v = d.values[di][c];
+        grid[r * nx + c] = (v === null || v === undefined || v <= 0) ? NaN : Math.log10(v);
       }
     }
-    sctx.putImageData(img, 0, 0);
 
+    var scale = (nx > 1200) ? 2 : 4;
+    var W = nx * scale, H = ny * scale;
     var big = document.createElement('canvas');
-    big.width = nx * 4; big.height = ny * 4;
+    big.width = W; big.height = H;
     var bctx = big.getContext('2d');
-    bctx.imageSmoothingEnabled = true;
-    bctx.imageSmoothingQuality = 'high';
-    bctx.drawImage(small, 0, 0, big.width, big.height);
+    var img = bctx.createImageData(W, H);
+
+    for (var y = 0; y < H; y++) {
+      var fy = (y + 0.5) / scale - 0.5;
+      var y0 = Math.floor(fy), ty = fy - y0;
+      for (var x = 0; x < W; x++) {
+        var fx = (x + 0.5) / scale - 0.5;
+        var x0 = Math.floor(fx), tx = fx - x0;
+        var sum = 0, wsum = 0;
+        for (var dy = 0; dy < 2; dy++) {
+          var yy = y0 + dy;
+          if (yy < 0 || yy >= ny) continue;
+          for (var dx = 0; dx < 2; dx++) {
+            var xx = x0 + dx;
+            if (xx < 0 || xx >= nx) continue;
+            var g = grid[yy * nx + xx];
+            if (g !== g) continue;
+            var w = (dx ? tx : 1 - tx) * (dy ? ty : 1 - ty);
+            sum += g * w; wsum += w;
+          }
+        }
+        if (wsum < 0.5) continue;
+        var t = (sum / wsum - LMIN) / (LMAX - LMIN);
+        t = Math.max(0, Math.min(0.9999, t));
+        var col = palette[Math.floor(t * N)];
+        var p = (y * W + x) * 4;
+        img.data[p] = col[0];
+        img.data[p + 1] = col[1];
+        img.data[p + 2] = col[2];
+        img.data[p + 3] = 225;
+      }
+    }
+    bctx.putImageData(img, 0, 0);
 
     var bounds = [[minLat, minLon], [maxLat, maxLon]];
     L.imageOverlay(big.toDataURL(), bounds, {opacity: 1}).addTo(map);
@@ -149,24 +156,6 @@ fetch('chl_latest.json?' + Date.now())
 
     map.on('click', function (e) {
       var f = (e.latlng.lat - minLat) / (maxLat - minLat);
-      var g = (e.latlng.lng - minLon) / (maxLon - minLon);
+      var g2 = (e.latlng.lng - minLon) / (maxLon - minLon);
       var txt = 'خارج منطقة البيانات';
-      if (f >= 0 && f <= 1 && g >= 0 && g <= 1) {
-        var k = Math.round(f * (ny - 1));
-        var i2 = latAsc ? k : ny - 1 - k;
-        var j2 = Math.round(g * (nx - 1));
-        var val = d.values[i2][j2];
-        txt = (val === null) ? 'لا توجد بيانات هنا (يابسة أو غيوم)' : 'الكلوروفيل: ' + val + ' ملغ/م³';
-      }
-      var popup = L.popup().setLatLng(e.latlng).setContent(txt).openOn(map);
-      getDepth(e.latlng).then(function (extra) {
-        if (extra) popup.setContent(txt + extra);
-      });
-    });
-  })
-  .catch(function () {
-    document.getElementById('info').textContent = 'تعذر تحميل البيانات';
-  });
-</script>
-</body>
-</html>
+      if (f >= 0 && f <= 1 && g2 >= 0 && g2
