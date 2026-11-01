@@ -11,7 +11,7 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 .box{position:absolute;z-index:1000;background:#fff;padding:8px 12px;border-radius:8px;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
 #info{top:10px;right:10px}
 #legend{bottom:20px;right:10px}
-#bar{height:12px;width:200px;margin:6px 0 2px;background:linear-gradient(to right,hsl(240,100%,50%),hsl(180,100%,50%),hsl(120,100%,50%),hsl(60,100%,50%),hsl(0,100%,50%))}
+#bar{height:12px;width:200px;margin:6px 0 2px}
 #nums{display:flex;justify-content:space-between;direction:ltr;font-size:12px}
 </style>
 </head>
@@ -26,13 +26,44 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 var map = L.map('map').setView([36.6, 3.0], 6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 12, attribution: '© OpenStreetMap'}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 12, attribution: 'Tiles © Esri'}).addTo(map);
+
+var stops = [
+  [0, [91, 43, 255]],
+  [0.25, [0, 183, 255]],
+  [0.5, [0, 255, 106]],
+  [0.75, [255, 238, 0]],
+  [1, [255, 26, 26]]
+];
+
+function rgbAt(t) {
+  t = Math.max(0, Math.min(1, t));
+  for (var k = 1; k < stops.length; k++) {
+    if (t <= stops[k][0]) {
+      var a = stops[k - 1], b = stops[k];
+      var u = (t - a[0]) / (b[0] - a[0]);
+      return [
+        Math.round(a[1][0] + (b[1][0] - a[1][0]) * u),
+        Math.round(a[1][1] + (b[1][1] - a[1][1]) * u),
+        Math.round(a[1][2] + (b[1][2] - a[1][2]) * u)
+      ];
+    }
+  }
+  return stops[stops.length - 1][1];
+}
 
 function color(v) {
   var t = (Math.log10(v) - Math.log10(0.05)) / (Math.log10(5) - Math.log10(0.05));
-  t = Math.max(0, Math.min(1, t));
-  return 'hsl(' + (240 - 240 * t) + ',100%,50%)';
+  var c = rgbAt(t);
+  return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
 }
+
+var parts = [];
+for (var s = 0; s < stops.length; s++) {
+  var cc = stops[s][1];
+  parts.push('rgb(' + cc[0] + ',' + cc[1] + ',' + cc[2] + ') ' + (stops[s][0] * 100) + '%');
+}
+document.getElementById('bar').style.background = 'linear-gradient(to right,' + parts.join(',') + ')';
 
 fetch('chl_latest.json?' + Date.now())
   .then(function (r) { return r.json(); })
@@ -55,7 +86,7 @@ fetch('chl_latest.json?' + Date.now())
       }
     }
     var bounds = [[minLat, minLon], [maxLat, maxLon]];
-    L.imageOverlay(c.toDataURL(), bounds, {opacity: 0.7}).addTo(map);
+    L.imageOverlay(c.toDataURL(), bounds, {opacity: 0.9}).addTo(map);
     map.fitBounds(bounds);
     document.getElementById('info').innerHTML = 'الكلوروفيل في سواحل الجزائر<br>تاريخ البيانات: ' + d.date;
 
