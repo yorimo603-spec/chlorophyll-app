@@ -8,11 +8,12 @@
 <style>
 html,body{margin:0;height:100%;font-family:sans-serif}
 #map{height:100%}
-.box{position:absolute;z-index:1000;background:#fff;padding:8px 12px;border-radius:8px;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
-#info{top:10px;right:10px}
+.box{position:absolute;z-index:1000;background:rgba(255,255,255,.92);padding:8px 12px;border-radius:10px;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
+#info{bottom:20px;left:10px}
 #legend{bottom:20px;right:10px}
-#bar{height:12px;width:200px;margin:6px 0 2px}
+#bar{height:12px;width:200px;margin:6px 0 2px;border-radius:6px}
 #nums{display:flex;justify-content:space-between;direction:ltr;font-size:12px}
+.leaflet-control-layers{direction:rtl;text-align:right}
 </style>
 </head>
 <body>
@@ -21,19 +22,45 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 <div id="legend" class="box">
 <div>الكلوروفيل (ملغ/م³)</div>
 <div id="bar"></div>
-<div id="nums"><span>0.05</span><span>0.3</span><span>1</span><span>5</span></div>
+<div id="nums"><span>0.05</span><span>0.5</span><span>5</span></div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var map = L.map('map').setView([36.6, 3.0], 6);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 12, attribution: 'Tiles © Esri'}).addTo(map);
+var map = L.map('map', {maxZoom: 12}).setView([36.6, 3.0], 6);
+
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 12, attribution: 'Tiles © Esri'});
+var ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom: 12, maxNativeZoom: 10, attribution: 'Tiles © Esri'});
+sat.addTo(map);
+
+map.createPane('depth');
+map.getPane('depth').style.zIndex = 450;
+map.getPane('depth').style.pointerEvents = 'none';
+
+var contours = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
+  layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', attribution: 'Bathymetry © EMODnet'
+});
+var depthColors = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
+  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.6, pane: 'depth', attribution: 'Bathymetry © EMODnet'
+});
+contours.addTo(map);
+
+map.createPane('labels');
+map.getPane('labels').style.zIndex = 650;
+map.getPane('labels').style.pointerEvents = 'none';
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {pane: 'labels', maxZoom: 12, maxNativeZoom: 10}).addTo(map);
+
+L.control.layers(
+  {'قمر صناعي': sat, 'خريطة البحر': ocean},
+  {'خطوط العمق (متر)': contours, 'ألوان العمق': depthColors},
+  {collapsed: false}
+).addTo(map);
 
 var stops = [
-  [0, [91, 43, 255]],
-  [0.25, [0, 183, 255]],
-  [0.5, [0, 255, 106]],
-  [0.75, [255, 238, 0]],
-  [1, [255, 26, 26]]
+  [0, [38, 70, 200]],
+  [0.25, [0, 190, 230]],
+  [0.5, [40, 220, 120]],
+  [0.75, [255, 225, 40]],
+  [1, [255, 90, 30]]
 ];
 
 function rgbAt(t) {
@@ -52,10 +79,9 @@ function rgbAt(t) {
   return stops[stops.length - 1][1];
 }
 
-function color(v) {
+function getT(v) {
   var t = (Math.log10(v) - Math.log10(0.05)) / (Math.log10(5) - Math.log10(0.05));
-  var c = rgbAt(t);
-  return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+  return Math.max(0, Math.min(1, t));
 }
 
 var parts = [];
@@ -65,6 +91,22 @@ for (var s = 0; s < stops.length; s++) {
 }
 document.getElementById('bar').style.background = 'linear-gradient(to right,' + parts.join(',') + ')';
 
+function getDepth(latlng) {
+  var url = 'https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(' + latlng.lng + '%20' + latlng.lat + ')';
+  return fetch(url)
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var v = null;
+      if (typeof j === 'number') v = j;
+      else if (j && typeof j.avg === 'number') v = j.avg;
+      else if (j && typeof j.depth === 'number') v = j.depth;
+      if (v === null) return '';
+      if (v >= 0) return '';
+      return '<br>العمق: ' + Math.abs(Math.round(v)) + ' متر';
+    })
+    .catch(function () { return ''; });
+}
+
 fetch('chl_latest.json?' + Date.now())
   .then(function (r) { return r.json(); })
   .then(function (d) {
@@ -73,20 +115,35 @@ fetch('chl_latest.json?' + Date.now())
     var minLat = Math.min.apply(null, d.lats), maxLat = Math.max.apply(null, d.lats);
     var minLon = Math.min.apply(null, d.lons), maxLon = Math.max.apply(null, d.lons);
 
-    var c = document.createElement('canvas');
-    c.width = nx; c.height = ny;
-    var ctx = c.getContext('2d');
+    var small = document.createElement('canvas');
+    small.width = nx; small.height = ny;
+    var sctx = small.getContext('2d');
+    var img = sctx.createImageData(nx, ny);
     for (var i = 0; i < ny; i++) {
       var row = latAsc ? ny - 1 - i : i;
       for (var j = 0; j < nx; j++) {
         var v = d.values[i][j];
         if (v === null) continue;
-        ctx.fillStyle = color(v);
-        ctx.fillRect(j, row, 1, 1);
+        var t = getT(v);
+        var c = rgbAt(t);
+        var p = (row * nx + j) * 4;
+        img.data[p] = c[0];
+        img.data[p + 1] = c[1];
+        img.data[p + 2] = c[2];
+        img.data[p + 3] = Math.round(255 * (0.45 + 0.5 * t));
       }
     }
+    sctx.putImageData(img, 0, 0);
+
+    var big = document.createElement('canvas');
+    big.width = nx * 4; big.height = ny * 4;
+    var bctx = big.getContext('2d');
+    bctx.imageSmoothingEnabled = true;
+    bctx.imageSmoothingQuality = 'high';
+    bctx.drawImage(small, 0, 0, big.width, big.height);
+
     var bounds = [[minLat, minLon], [maxLat, maxLon]];
-    L.imageOverlay(c.toDataURL(), bounds, {opacity: 0.9}).addTo(map);
+    L.imageOverlay(big.toDataURL(), bounds, {opacity: 1}).addTo(map);
     map.fitBounds(bounds);
     document.getElementById('info').innerHTML = 'الكلوروفيل في سواحل الجزائر<br>تاريخ البيانات: ' + d.date;
 
@@ -101,7 +158,10 @@ fetch('chl_latest.json?' + Date.now())
         var val = d.values[i2][j2];
         txt = (val === null) ? 'لا توجد بيانات هنا (يابسة أو غيوم)' : 'الكلوروفيل: ' + val + ' ملغ/م³';
       }
-      L.popup().setLatLng(e.latlng).setContent(txt).openOn(map);
+      var popup = L.popup().setLatLng(e.latlng).setContent(txt).openOn(map);
+      getDepth(e.latlng).then(function (extra) {
+        if (extra) popup.setContent(txt + extra);
+      });
     });
   })
   .catch(function () {
