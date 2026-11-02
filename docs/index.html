@@ -51,24 +51,26 @@ var ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Oc
 sat.addTo(map);
 L.control.layers({'قمر صناعي': sat, 'خريطة البحر': ocean}, null, {collapsed: true}).addTo(map);
 
-/* ألوان الأعماق: لون لكل 10 أمتار من 0 إلى 200 متر */
-function hslToHex(h, s, l) {
-  s /= 100; l /= 100;
-  var k = function (n) { return (n + h / 30) % 12; };
-  var a = s * Math.min(l, 1 - l);
-  var f = function (n) {
-    var v = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-    var x = Math.round(255 * v).toString(16);
-    return x.length < 2 ? '0' + x : x;
-  };
-  return '#' + f(0) + f(8) + f(4);
+/* ألوان الأعماق: تدرج Viridis، لون لكل 10 أمتار من 0 إلى 200 متر */
+var VIR = [[253, 231, 37], [94, 201, 98], [33, 145, 140], [59, 82, 139], [68, 1, 84]];
+function hex2(n) {
+  var x = Math.round(n).toString(16);
+  return x.length < 2 ? '0' + x : x;
+}
+function palAt(t) {
+  var n = VIR.length - 1;
+  var x = Math.max(0, Math.min(1, t)) * n;
+  var i = Math.min(n - 1, Math.floor(x));
+  var u = x - i;
+  var a = VIR[i], b = VIR[i + 1];
+  return '#' + hex2(a[0] + (b[0] - a[0]) * u) + hex2(a[1] + (b[1] - a[1]) * u) + hex2(a[2] + (b[2] - a[2]) * u);
 }
 var STEPS = 20;
 var depthCols = [];
 for (var i = 0; i < STEPS; i++) {
-  depthCols.push(hslToHex(Math.round(270 * i / (STEPS - 1)), 90, 50));
+  depthCols.push(palAt(i / (STEPS - 1)));
 }
-var DEEP = '#0a1a40';
+var DEEP = '#0a0a1e';
 
 function buildSld() {
   var e = '<ColorMapEntry color="' + DEEP + '" quantity="-200"/>';
