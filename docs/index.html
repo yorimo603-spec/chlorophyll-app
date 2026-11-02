@@ -15,14 +15,15 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 #dtitle{text-align:center;margin-bottom:4px}
 #dwrap{display:flex;direction:ltr;gap:6px;align-items:stretch}
 #dcol{display:flex;flex-direction:column;width:22px}
-#dcol div{height:9px}
-#dlab{position:relative;width:46px;height:200px}
+#dlab{position:relative;width:46px}
 #dlab span{position:absolute;left:0;transform:translateY(-50%);white-space:nowrap}
 #bar{height:14px;width:200px;margin:6px 0 2px;border-radius:4px}
 #nums{display:flex;justify-content:space-between;direction:ltr;font-size:12px}
 #modes{top:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px}
-#modes button{border:0;border-radius:8px;padding:9px 14px;font-size:15px;background:#e5e7eb;color:#111}
-#modes button.on{background:#0b63d6;color:#fff}
+#dtools{top:76px;left:50%;transform:translateX(-50%);display:none;gap:6px;padding:6px}
+.box button{border:0;border-radius:8px;padding:9px 14px;font-size:15px;background:#e5e7eb;color:#111}
+.box button.on{background:#0b63d6;color:#fff}
+#dtools button{font-size:13px;padding:7px 10px}
 .leaflet-control-layers{direction:rtl;text-align:right}
 </style>
 </head>
@@ -31,6 +32,10 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 <div id="modes" class="box">
 <button id="bChl" class="on">🌊 الكلوروفيل</button>
 <button id="bDepth">📏 الأعماق</button>
+</div>
+<div id="dtools" class="box">
+<button id="bPal">🎨 الألوان</button>
+<button id="bShade" class="on">⛰️ تضليل</button>
 </div>
 <div id="info" class="box">جاري التحميل...</div>
 <div id="legend" class="box">
@@ -51,95 +56,200 @@ var ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Oc
 sat.addTo(map);
 L.control.layers({'قمر صناعي': sat, 'خريطة البحر': ocean}, null, {collapsed: true}).addTo(map);
 
-/* ألوان الأعماق: تدرج Viridis، لون لكل 10 أمتار من 0 إلى 200 متر */
-var VIR = [[253, 231, 37], [94, 201, 98], [33, 145, 140], [59, 82, 139], [68, 1, 84]];
-function hex2(n) {
-  var x = Math.round(n).toString(16);
-  return x.length < 2 ? '0' + x : x;
-}
-function palAt(t) {
-  var n = VIR.length - 1;
-  var x = Math.max(0, Math.min(1, t)) * n;
-  var i = Math.min(n - 1, Math.floor(x));
-  var u = x - i;
-  var a = VIR[i], b = VIR[i + 1];
-  return '#' + hex2(a[0] + (b[0] - a[0]) * u) + hex2(a[1] + (b[1] - a[1]) * u) + hex2(a[2] + (b[2] - a[2]) * u);
-}
-var STEPS = 20;
-var depthCols = [];
-for (var i = 0; i < STEPS; i++) {
-  depthCols.push(palAt(i / (STEPS - 1)));
-}
-var DEEP = '#0a0a1e';
-
-function buildSld() {
-  var e = '<ColorMapEntry color="' + DEEP + '" quantity="-200"/>';
-  for (var j = STEPS - 1; j >= 0; j--) {
-    e += '<ColorMapEntry color="' + depthCols[j] + '" quantity="' + (-10 * j) + '"/>';
-  }
-  e += '<ColorMapEntry color="#000000" opacity="0" quantity="100000"/>';
-  return '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld"><NamedLayer><Name>emodnet:mean</Name><UserStyle><FeatureTypeStyle><Rule><RasterSymbolizer><ColorMap type="intervals">' + e + '</ColorMap></RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
-}
-
-var WMS = 'https://ows.emodnet-bathymetry.eu/wms';
-var depthStyled = L.tileLayer.wms(WMS, {
-  layers: 'emodnet:mean', format: 'image/png', transparent: true, opacity: 0.85, maxZoom: 19,
-  sld_body: buildSld(), attribution: 'Bathymetry © EMODnet'
-});
-var depthRainbow = L.tileLayer.wms(WMS, {
-  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.9, maxZoom: 19, attribution: 'Bathymetry © EMODnet'
-});
-
-/* مفتاح ألوان الأعماق */
-(function () {
-  var col = document.getElementById('dcol');
-  for (var i = 0; i < STEPS; i++) {
-    var d = document.createElement('div');
-    d.style.background = depthCols[i];
-    col.appendChild(d);
-  }
-  var dd = document.createElement('div');
-  dd.style.background = DEEP;
-  dd.style.height = '20px';
-  col.appendChild(dd);
-  var lab = document.getElementById('dlab');
-  lab.style.height = (STEPS * 9 + 20) + 'px';
-  var marks = [[0, '0'], [50, '50'], [100, '100'], [150, '150'], [200, '200+']];
-  for (var m = 0; m < marks.length; m++) {
-    var s = document.createElement('span');
-    s.textContent = marks[m][1];
-    s.style.top = (marks[m][0] / 10 * 9) + 'px';
-    if (m === marks.length - 1) s.style.top = (STEPS * 9 + 8) + 'px';
-    lab.appendChild(s);
-  }
-})();
-
-var usingFallback = false;
-var gotTile = false;
-var errCount = 0;
-depthStyled.on('tileload', function () { gotTile = true; });
-depthStyled.on('tileerror', function () {
-  errCount++;
-  if (!gotTile && errCount >= 4 && !usingFallback) {
-    usingFallback = true;
-    if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
-    if (mode === 'depth') depthRainbow.addTo(map);
-    document.getElementById('info').innerHTML = 'تعذر التلوين كل 10 متر<br>تم عرض ألوان EMODnet العادية';
-  }
-});
+map.createPane('depthcol');
+map.getPane('depthcol').style.zIndex = 420;
+map.getPane('depthcol').style.pointerEvents = 'none';
 
 map.createPane('depth');
 map.getPane('depth').style.zIndex = 450;
 map.getPane('depth').style.pointerEvents = 'none';
-L.tileLayer.wms(WMS, {
+var contours = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
   layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', maxZoom: 19, attribution: 'Bathymetry © EMODnet'
-}).addTo(map);
+});
+contours.addTo(map);
 
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 650;
 map.getPane('labels').style.pointerEvents = 'none';
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {pane: 'labels', maxZoom: 19, maxNativeZoom: 17}).addTo(map);
 
+/* ========== الأعماق: قراءة الأرقام والتلوين داخل المتصفح ========== */
+var TERR = 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/';
+var elCache = {};
+
+function getElev(z, x, y, cb) {
+  var n = Math.pow(2, z);
+  if (y < 0 || y >= n) { cb(null); return; }
+  x = ((x % n) + n) % n;
+  var key = z + '/' + x + '/' + y;
+  if (elCache[key]) { cb(elCache[key]); return; }
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function () {
+    var c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    var cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0);
+    var d = cx.getImageData(0, 0, 256, 256).data;
+    var el = new Float32Array(65536);
+    for (var i = 0; i < 65536; i++) {
+      el[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768;
+    }
+    elCache[key] = el;
+    cb(el);
+  };
+  img.onerror = function () { cb(null); };
+  img.src = TERR + z + '/' + x + '/' + y + '.png';
+}
+
+function hex2rgb(h) {
+  return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16)];
+}
+function lerpPal(stops, t) {
+  var n = stops.length - 1;
+  var x = Math.max(0, Math.min(1, t)) * n;
+  var i = Math.min(n - 1, Math.floor(x));
+  var u = x - i;
+  var a = hex2rgb(stops[i]), b = hex2rgb(stops[i + 1]);
+  return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+}
+
+var PALETTES = [
+  {name: 'طيف', stops: ['#d7191c', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5', '#3288bd', '#5e4fa2'], tail: ['#4a2f80', '#33225f', '#1f1640', '#0e0a24']},
+  {name: 'Viridis', stops: ['#fde725', '#5ec962', '#21918c', '#3b528b', '#440154'], tail: ['#2c0b45', '#1f0933', '#150624', '#0b0314']},
+  {name: 'أزرق', stops: ['#e6f5ff', '#a6d8f5', '#5aa9e0', '#2a6fba', '#123f86'], tail: ['#0c2f6b', '#082254', '#05173d', '#030d26']}
+];
+var palIdx = 0;
+var curCols = [];
+var shadeOn = true;
+
+function buildCols() {
+  var p = PALETTES[palIdx];
+  curCols = [];
+  for (var i = 0; i < 20; i++) curCols.push(lerpPal(p.stops, i / 19));
+  for (var j = 0; j < 4; j++) curCols.push(hex2rgb(p.tail[j]));
+}
+
+function buildLegend() {
+  var col = document.getElementById('dcol');
+  col.innerHTML = '';
+  for (var i = 0; i < 24; i++) {
+    var d = document.createElement('div');
+    d.style.height = (i < 20 ? 9 : 16) + 'px';
+    d.style.background = 'rgb(' + Math.round(curCols[i][0]) + ',' + Math.round(curCols[i][1]) + ',' + Math.round(curCols[i][2]) + ')';
+    col.appendChild(d);
+  }
+  var lab = document.getElementById('dlab');
+  lab.innerHTML = '';
+  lab.style.height = (20 * 9 + 4 * 16) + 'px';
+  var marks = [[0, '0'], [45, '50'], [90, '100'], [135, '150'], [180, '200'], [196, '500'], [212, '1000'], [236, '2000+']];
+  for (var m = 0; m < marks.length; m++) {
+    var s = document.createElement('span');
+    s.textContent = marks[m][1];
+    s.style.top = marks[m][0] + 'px';
+    lab.appendChild(s);
+  }
+}
+
+function binOf(e) {
+  if (e >= 0) return -1;
+  var d = -e;
+  if (d < 200) return Math.floor(d / 10);
+  if (d < 500) return 20;
+  if (d < 1000) return 21;
+  if (d < 2000) return 22;
+  return 23;
+}
+function lineStrength(a, b) {
+  var m = Math.max(a, b);
+  var depth = m <= 20 ? m * 10 : (m === 21 ? 500 : (m === 22 ? 1000 : 2000));
+  return (depth % 50 === 0) ? 2 : 1;
+}
+
+function renderTile(el, z, ty, canvas) {
+  var ctx = canvas.getContext('2d');
+  var out = ctx.createImageData(256, 256);
+  var o = out.data;
+  var idx = new Int8Array(65536);
+  for (var i = 0; i < 65536; i++) idx[i] = binOf(el[i]);
+
+  var n = Math.pow(2, z);
+  var lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n)));
+  var cell = 40075016.68 * Math.cos(lat) / (256 * n);
+  var k = shadeOn ? 8 / (2 * cell) : 0;
+
+  for (var y = 0; y < 256; y++) {
+    for (var x = 0; x < 256; x++) {
+      var p = y * 256 + x;
+      var b = idx[p];
+      if (b < 0) continue;
+      var c = curCols[b];
+      var f = 1;
+      if (shadeOn) {
+        var xl = x > 0 ? x - 1 : x, xr = x < 255 ? x + 1 : x;
+        var yu = y > 0 ? y - 1 : y, yd = y < 255 ? y + 1 : y;
+        var dzdx = (Math.min(el[y * 256 + xr], 0) - Math.min(el[y * 256 + xl], 0)) * k;
+        var dzdy = (Math.min(el[yu * 256 + x], 0) - Math.min(el[yd * 256 + x], 0)) * k;
+        var inv = 1 / Math.sqrt(dzdx * dzdx + dzdy * dzdy + 1);
+        f = (0.5 * dzdx - 0.5 * dzdy + 0.707) * inv / 0.707;
+        f = Math.max(0.45, Math.min(1.55, f));
+      }
+      var line = 0;
+      if (x < 255) {
+        var r = idx[p + 1];
+        if (r >= 0 && r !== b) line = lineStrength(b, r);
+      }
+      if (y < 255) {
+        var dn = idx[p + 256];
+        if (dn >= 0 && dn !== b) {
+          var l2 = lineStrength(b, dn);
+          if (l2 > line) line = l2;
+        }
+      }
+      if (line === 2) f *= 0.35;
+      else if (line === 1) f *= 0.82;
+      var q = p * 4;
+      o[q] = Math.max(0, Math.min(255, c[0] * f));
+      o[q + 1] = Math.max(0, Math.min(255, c[1] * f));
+      o[q + 2] = Math.max(0, Math.min(255, c[2] * f));
+      o[q + 3] = 235;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+var DepthLayer = L.GridLayer.extend({
+  createTile: function (coords, done) {
+    var tile = document.createElement('canvas');
+    tile.width = 256; tile.height = 256;
+    getElev(coords.z, coords.x, coords.y, function (el) {
+      if (el) renderTile(el, coords.z, coords.y, tile);
+      done(null, tile);
+    });
+    return tile;
+  }
+});
+var depthLayer = new DepthLayer({pane: 'depthcol', maxNativeZoom: 12, maxZoom: 19, minZoom: 5, attribution: 'Terrain © Mapzen / GEBCO'});
+
+function sampleDepth(latlng) {
+  return new Promise(function (resolve) {
+    var z = 10, n = Math.pow(2, z);
+    var latr = latlng.lat * Math.PI / 180;
+    var xf = (latlng.lng + 180) / 360 * n;
+    var yf = (1 - Math.log(Math.tan(latr) + 1 / Math.cos(latr)) / Math.PI) / 2 * n;
+    var tx = Math.floor(xf), ty = Math.floor(yf);
+    getElev(z, tx, ty, function (el) {
+      if (!el) { resolve(''); return; }
+      var px = Math.min(255, Math.floor((xf - tx) * 256));
+      var py = Math.min(255, Math.floor((yf - ty) * 256));
+      var e = el[py * 256 + px];
+      if (e >= 0) { resolve('يابسة'); return; }
+      resolve('العمق: ' + Math.abs(Math.round(-e)) + ' متر تقريباً');
+    });
+  });
+}
+
+/* ========== الكلوروفيل ========== */
 var palette = [
   [30, 40, 160], [20, 110, 240], [0, 200, 255], [0, 230, 150], [120, 235, 60],
   [255, 240, 0], [255, 160, 0], [255, 60, 0], [190, 0, 60]
@@ -165,38 +275,41 @@ var chlInfo = 'جاري التحميل...';
 function setMode(m) {
   mode = m;
   var isChl = (m === 'chl');
-  var dl = usingFallback ? depthRainbow : depthStyled;
   if (isChl) {
-    if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
-    if (map.hasLayer(depthRainbow)) map.removeLayer(depthRainbow);
+    if (map.hasLayer(depthLayer)) map.removeLayer(depthLayer);
+    if (!map.hasLayer(contours)) contours.addTo(map);
     if (chlLayer && !map.hasLayer(chlLayer)) chlLayer.addTo(map);
   } else {
     if (chlLayer && map.hasLayer(chlLayer)) map.removeLayer(chlLayer);
-    if (!map.hasLayer(dl)) dl.addTo(map);
+    if (map.hasLayer(contours)) map.removeLayer(contours);
+    if (!map.hasLayer(depthLayer)) depthLayer.addTo(map);
   }
   document.getElementById('legend').style.display = isChl ? 'block' : 'none';
-  document.getElementById('dlegend').style.display = (!isChl && !usingFallback) ? 'block' : 'none';
-  document.getElementById('info').innerHTML = isChl ? chlInfo : (usingFallback ? 'خريطة الأعماق (ألوان EMODnet)' : 'خريطة الأعماق: لون لكل 10 متر<br>المصدر: EMODnet');
+  document.getElementById('dlegend').style.display = isChl ? 'none' : 'block';
+  document.getElementById('dtools').style.display = isChl ? 'none' : 'flex';
+  document.getElementById('info').innerHTML = isChl ? chlInfo : 'خريطة الأعماق: لون لكل 10 متر';
   document.getElementById('bChl').className = isChl ? 'on' : '';
   document.getElementById('bDepth').className = isChl ? '' : 'on';
 }
 document.getElementById('bChl').onclick = function () { setMode('chl'); };
 document.getElementById('bDepth').onclick = function () { setMode('depth'); };
 
-function getDepth(latlng) {
-  var url = 'https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(' + latlng.lng + '%20' + latlng.lat + ')';
-  return fetch(url)
-    .then(function (r) { return r.json(); })
-    .then(function (j) {
-      var v = null;
-      if (typeof j === 'number') v = j;
-      else if (j && typeof j.avg === 'number') v = j.avg;
-      else if (j && typeof j.depth === 'number') v = j.depth;
-      if (v === null || v >= 0) return '';
-      return 'العمق: ' + Math.abs(Math.round(v)) + ' متر';
-    })
-    .catch(function () { return ''; });
-}
+document.getElementById('bPal').onclick = function () {
+  palIdx = (palIdx + 1) % PALETTES.length;
+  buildCols();
+  buildLegend();
+  depthLayer.redraw();
+  document.getElementById('bPal').textContent = '🎨 ' + PALETTES[palIdx].name;
+};
+document.getElementById('bShade').onclick = function () {
+  shadeOn = !shadeOn;
+  document.getElementById('bShade').className = shadeOn ? 'on' : '';
+  depthLayer.redraw();
+};
+
+buildCols();
+buildLegend();
+document.getElementById('bPal').textContent = '🎨 ' + PALETTES[palIdx].name;
 
 map.on('click', function (e) {
   var chlTxt = '';
@@ -216,7 +329,7 @@ map.on('click', function (e) {
     }
   }
   var popup = L.popup().setLatLng(e.latlng).setContent(chlTxt || 'جاري قياس العمق...').openOn(map);
-  getDepth(e.latlng).then(function (dtxt) {
+  sampleDepth(e.latlng).then(function (dtxt) {
     var all = chlTxt;
     if (dtxt) all = all ? all + '<br>' + dtxt : dtxt;
     if (!all) all = 'العمق غير متوفر هنا';
