@@ -35,7 +35,7 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 </div>
 <div id="dtools" class="box">
 <button id="bPal">🎨 الألوان</button>
-<button id="bShade">⛰️ تضليل</button>
+<button id="bShade" class="on">⛰️ تضليل</button>
 </div>
 <div id="info" class="box">جاري التحميل...</div>
 <div id="legend" class="box">
@@ -73,12 +73,13 @@ function lerpPal(stops, t) {
   return '#' + toHex(a[0] + (b[0] - a[0]) * u) + toHex(a[1] + (b[1] - a[1]) * u) + toHex(a[2] + (b[2] - a[2]) * u);
 }
 var PALETTES = [
+  {name: 'نافيونيكس', smooth: true, stops: ['#0b6bb5', '#2d9cdb', '#69c4ee', '#a8dcf4', '#d6eff9'], tail: ['#e2f3fa', '#eaf6fb', '#f1f9fc', '#f6fbfd']},
   {name: 'طيف', stops: ['#d7191c', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5', '#3288bd', '#5e4fa2'], tail: ['#4a2f80', '#33225f', '#1f1640', '#0e0a24']},
   {name: 'Viridis', stops: ['#fde725', '#5ec962', '#21918c', '#3b528b', '#440154'], tail: ['#2c0b45', '#1f0933', '#150624', '#0b0314']},
   {name: 'أزرق', stops: ['#e6f5ff', '#a6d8f5', '#5aa9e0', '#2a6fba', '#123f86'], tail: ['#0c2f6b', '#082254', '#05173d', '#030d26']}
 ];
 var palIdx = 0;
-var shadeOn = false;
+var shadeOn = true;
 var curCols = [];
 
 function buildCols() {
@@ -89,6 +90,7 @@ function buildCols() {
 }
 
 function buildSld(shade) {
+  var smooth = PALETTES[palIdx].smooth;
   var e = '';
   e += '<ColorMapEntry color="' + curCols[23] + '" quantity="-2000"/>';
   e += '<ColorMapEntry color="' + curCols[22] + '" quantity="-1000"/>';
@@ -97,9 +99,9 @@ function buildSld(shade) {
   for (var j = 19; j >= 0; j--) {
     e += '<ColorMapEntry color="' + curCols[j] + '" quantity="' + (-10 * j) + '"/>';
   }
-  e += '<ColorMapEntry color="#000000" opacity="0" quantity="100000"/>';
+  e += '<ColorMapEntry color="#000000" opacity="0" quantity="' + (smooth ? 1 : 100000) + '"/>';
   var sh = shade ? '<ShadedRelief><ReliefFactor>80</ReliefFactor></ShadedRelief>' : '';
-  return '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld"><NamedLayer><Name>emodnet:mean</Name><UserStyle><FeatureTypeStyle><Rule><RasterSymbolizer><ColorMap type="intervals">' + e + '</ColorMap>' + sh + '</RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
+  return '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld"><NamedLayer><Name>emodnet:mean</Name><UserStyle><FeatureTypeStyle><Rule><RasterSymbolizer><ColorMap type="' + (smooth ? 'ramp' : 'intervals') + '">' + e + '</ColorMap>' + sh + '</RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
 }
 
 function buildLegend() {
@@ -130,11 +132,11 @@ document.getElementById('bPal').textContent = '🎨 ' + PALETTES[palIdx].name;
 /* ===== طبقات EMODnet ===== */
 var WMS = 'https://ows.emodnet-bathymetry.eu/wms';
 var depthStyled = L.tileLayer.wms(WMS, {
-  layers: 'emodnet:mean', format: 'image/png', transparent: true, opacity: 0.88, maxZoom: 19,
-  sld_body: buildSld(false), attribution: 'Bathymetry © EMODnet'
+  layers: 'emodnet:mean', format: 'image/png', transparent: true, opacity: 0.88, maxZoom: 19, maxNativeZoom: 10,
+  sld_body: buildSld(shadeOn), attribution: 'Bathymetry © EMODnet'
 });
 var depthRainbow = L.tileLayer.wms(WMS, {
-  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.9, maxZoom: 19, attribution: 'Bathymetry © EMODnet'
+  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.9, maxZoom: 19, maxNativeZoom: 10, attribution: 'Bathymetry © EMODnet'
 });
 
 map.createPane('depth');
@@ -230,7 +232,7 @@ function setMode(m) {
   document.getElementById('legend').style.display = isChl ? 'block' : 'none';
   document.getElementById('dlegend').style.display = (!isChl && !usingFallback) ? 'block' : 'none';
   document.getElementById('dtools').style.display = (!isChl && !usingFallback) ? 'flex' : 'none';
-  document.getElementById('info').innerHTML = isChl ? chlInfo : (usingFallback ? 'خريطة الأعماق (ألوان EMODnet)' : 'خريطة الأعماق: لون لكل 10 متر<br>المصدر: EMODnet');
+  document.getElementById('info').innerHTML = isChl ? chlInfo : (usingFallback ? 'خريطة الأعماق (ألوان EMODnet)' : 'خريطة الأعماق<br>المصدر: EMODnet');
   document.getElementById('bChl').className = isChl ? 'on' : '';
   document.getElementById('bDepth').className = isChl ? '' : 'on';
 }
