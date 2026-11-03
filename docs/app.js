@@ -1,4 +1,4 @@
-var parts = ['p1.js', 'p2.js', 'p3.js'];
+var parts = ['p1.js', 'p2.js', 'p3.js', 'weather.js'];
 (function load(i) {
   if (i >= parts.length) return;
   var s = document.createElement('script');
