@@ -299,3 +299,17 @@ fetch('chl_latest.json?' + Date.now())
     chlInfo = 'تعذر تحميل بيانات الكلوروفيل';
     document.getElementById('info').textContent = chlInfo;
   });
+/* === لوحات ألوان جديدة === */
+PALETTES.unshift(
+  {name: 'كلاسيكي', smooth: true,
+   stops: ['#bff0f5', '#7fd6ec', '#3fb0e0', '#1f86c8', '#14559e'],
+   tail: ['#0f3f85', '#0b2f6b', '#08224f', '#051634']},
+  {name: 'فيروزي', smooth: true,
+   stops: ['#d9f7ef', '#8fe3d0', '#3fc3c4', '#2490c4', '#2a4fa0'],
+   tail: ['#243f8a', '#1b2e6c', '#131f4c', '#0b1230']}
+);
+palIdx = 0;
+buildCols();
+buildLegend();
+document.getElementById('bPal').textContent = '🎨 ' + PALETTES[palIdx].name;
+applySld();
