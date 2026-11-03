@@ -389,3 +389,47 @@ function buildLegend() {
 
 buildLegend();
 applySld();
+/* === زر GEBCO === */
+var gebco = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+  layers: 'GEBCO_LATEST', format: 'image/png', transparent: true,
+  opacity: 0.92, maxZoom: 19, maxNativeZoom: 10,
+  attribution: 'Bathymetry © GEBCO'
+});
+var useGebco = false;
+var bGeb = document.createElement('button');
+bGeb.id = 'bGeb';
+bGeb.textContent = '🌐 GEBCO';
+dt.appendChild(bGeb);
+
+bGeb.onclick = function () {
+  useGebco = !useGebco;
+  if (useGebco) {
+    if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
+    gebco.setOpacity(OPS[opIdx]);
+    gebco.addTo(map);
+    bGeb.className = 'on';
+    document.getElementById('dlegend').style.display = 'none';
+    document.getElementById('info').innerHTML = 'خريطة الأعماق<br>المصدر: GEBCO';
+  } else {
+    if (map.hasLayer(gebco)) map.removeLayer(gebco);
+    depthStyled.addTo(map);
+    bGeb.className = '';
+    document.getElementById('dlegend').style.display = 'block';
+    document.getElementById('info').innerHTML = 'خريطة الأعماق<br>المصدر: EMODnet';
+  }
+};
+
+bOp.addEventListener('click', function () {
+  gebco.setOpacity(OPS[opIdx]);
+});
+
+var _setMode = setMode;
+setMode = function (m) {
+  if (m === 'chl' && map.hasLayer(gebco)) map.removeLayer(gebco);
+  _setMode(m);
+  if (m === 'depth' && useGebco) {
+    if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
+    gebco.addTo(map);
+    document.getElementById('dlegend').style.display = 'none';
+  }
+};
