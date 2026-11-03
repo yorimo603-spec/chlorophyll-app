@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>الكلوروفيل والأعماق - الجزائر</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 html,body{margin:0;height:100%;font-family:sans-serif}
 #map{height:100%}
@@ -29,7 +28,7 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 </style>
 </head>
 <body>
-  <script>window.onerror=function(m,s,l){document.body.insertAdjacentHTML('beforeend','<div style="position:fixed;top:130px;left:10px;right:10px;z-index:99999;background:#fff;color:#c00;padding:10px;font-size:14px;direction:ltr;border:2px solid #c00">'+m+' | line '+l+'</div>');};</script>
+<script>window.onerror=function(m,s,l){document.body.insertAdjacentHTML('beforeend','<div style="position:fixed;top:130px;left:10px;right:10px;z-index:99999;background:#fff;color:#c00;padding:10px;font-size:14px;direction:ltr;border:2px solid #c00">'+m+' | line '+l+'</div>');};</script>
 <div id="map"></div>
 <div id="modes" class="box">
 <button id="bChl" class="on">🌊 الكلوروفيل</button>
@@ -49,66 +48,7 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 <div id="dtitle">العمق (متر)</div>
 <div id="dwrap"><div id="dcol"></div><div id="dlab"></div></div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script>
-if (!window.L) {
-  document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>');
-}
-</script>
-<script>
-if (!window.L) {
-  document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
-}
-</script>
-<script>
-var map = L.map('map', {maxZoom: 19, minZoom: 5}).setView([36.6, 3.0], 6);
-
-var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, maxNativeZoom: 17, attribution: 'Tiles © Esri'});
-var ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, maxNativeZoom: 10, attribution: 'Tiles © Esri'});
-sat.addTo(map);
-L.control.layers({'قمر صناعي': sat, 'خريطة البحر': ocean}, null, {collapsed: true}).addTo(map);
-
-/* ===== ألوان الأعماق ===== */
-function hex2rgb(h) {
-  return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16)];
-}
-function toHex(n) {
-  var x = Math.max(0, Math.min(255, Math.round(n))).toString(16);
-  return x.length < 2 ? '0' + x : x;
-}
-function lerpPal(stops, t) {
-  var n = stops.length - 1;
-  var x = Math.max(0, Math.min(1, t)) * n;
-  var i = Math.min(n - 1, Math.floor(x));
-  var u = x - i;
-  var a = hex2rgb(stops[i]), b = hex2rgb(stops[i + 1]);
-  return '#' + toHex(a[0] + (b[0] - a[0]) * u) + toHex(a[1] + (b[1] - a[1]) * u) + toHex(a[2] + (b[2] - a[2]) * u);
-}
-var PALETTES = [
-  {name: 'نافيونيكس', smooth: true, stops: ['#0a5fa8', '#1e86d0', '#4fb3e8', '#8fd0f2', '#c9e9f8'], tail: ['#d9eef9', '#e4f3fa', '#eef8fc', '#f5fbfd']},
-  {name: 'طيف', stops: ['#d7191c', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5', '#3288bd', '#5e4fa2'], tail: ['#4a2f80', '#33225f', '#1f1640', '#0e0a24']},
-  {name: 'Viridis', stops: ['#fde725', '#5ec962', '#21918c', '#3b528b', '#440154'], tail: ['#2c0b45', '#1f0933', '#150624', '#0b0314']},
-  {name: 'أزرق', stops: ['#e6f5ff', '#a6d8f5', '#5aa9e0', '#2a6fba', '#123f86'], tail: ['#0c2f6b', '#082254', '#05173d', '#030d26']}
-];
-var palIdx = 0;
-var shadeOn = true;
-var curCols = [];
-var SHALLOW_OP = [0.3, 0.3, 0.3, 0.6];
-
-function buildCols() {
-  var p = PALETTES[palIdx];
-  curCols = [];
-  for (var i = 0; i < 20; i++) curCols.push(lerpPal(p.stops, i / 19));
-  for (var j = 0; j < 4; j++) curCols.push(p.tail[j]);
-}
-
-function buildSld(shade) {
-  var smooth = PALETTES[palIdx].smooth;
-  var e = '';
-  e += '<ColorMapEntry color="' + curCols[23] + '" quantity="-2000"/>';
-  e += '<ColorMapEntry color="' + curCols[22] + '" quantity="-1000"/>';
-  e += '<ColorMapEntry color="' + curCols[21] + '" quantity="-500"/>';
-  e += '<ColorMapEntry color="' + curCols[20] + '" quantity="-200"/>';
-  for (var j = 19; j >= 0; j--) {
-    var op = (smooth && j < 4) ? SHALLOW_OP[j] : 1;
-    e += '<ColorM
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js?v=3"></script>
+</body>
+</html>
