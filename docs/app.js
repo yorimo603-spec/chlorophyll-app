@@ -51,9 +51,9 @@ map.on('overlayremove', updateUi);
 var STOPS = [
   [0.00, [45, 20, 140]], [0.15, [20, 70, 220]], [0.30, [0, 170, 255]],
   [0.45, [0, 225, 170]], [0.60, [110, 235, 60]], [0.75, [255, 235, 0]],
-  [0.88, [255, 130, 0]], [1.00, [200, 0, 40]]
+  [0.88, [255, 110, 0]], [1.00, [200, 0, 40]]
 ];
-var LMIN = Math.log10(0.05), LMAX = Math.log10(5);
+var LMIN = Math.log10(0.05), LMAX = Math.log10(1.2); /* أحمر عند 1.2 فأكثر */
 
 function colorAt(t) {
   t = Math.max(0, Math.min(1, t));
@@ -76,6 +76,17 @@ for (var si = 0; si < STOPS.length; si++) {
   var sc = STOPS[si][1];
   gp.push('rgb(' + sc[0] + ',' + sc[1] + ',' + sc[2] + ') ' + (STOPS[si][0] * 100) + '%');
 }
+/* تحديث أرقام شريط الألوان */
+(function () {
+  var all = document.getElementById('legend').getElementsByTagName('*');
+  for (var q = 0; q < all.length; q++) {
+    if (all[q].children.length === 0) {
+      var tx = all[q].textContent.trim();
+      if (tx === '5') all[q].textContent = '1.2+';
+      else if (tx === '0.5') all[q].textContent = '0.25';
+    }
+  }
+})();
 document.getElementById('bar').style.background = 'linear-gradient(to right,' + gp.join(',') + ')';
 
 /* تنعيم الشبكة (يتجاهل الخلايا الفارغة) */
