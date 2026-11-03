@@ -17,16 +17,10 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/Worl
   if (el) el.style.display = 'none';
 });
 
-/* خريطة EMODnet بألوانها الأصلية */
-var emodnet = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
-  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true,
-  opacity: 0.9, maxZoom: 19, maxNativeZoom: 10, attribution: 'Bathymetry © EMODnet'
-});
-
 var chlLayer = null;
 var data = null;
 var bnd = null;
-var layersCtl = L.control.layers(null, {'EMODnet': emodnet}, {collapsed: true}).addTo(map);
+var layersCtl = L.control.layers(null, null, {collapsed: true}).addTo(map);
 document.getElementById('info').textContent = 'جاري التحميل...';
 
 function getDepth(latlng) {
@@ -49,7 +43,6 @@ function updateUi() {
   document.getElementById('legend').style.display = chlOn ? 'block' : 'none';
 }
 map.on('overlayadd', function (e) {
-  if (chlLayer && e.layer === chlLayer && map.hasLayer(emodnet)) { /* الكلوروفيل فوق الأعماق */ }
   updateUi();
 });
 map.on('overlayremove', updateUi);
