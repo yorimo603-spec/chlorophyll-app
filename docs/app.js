@@ -313,3 +313,37 @@ buildCols();
 buildLegend();
 document.getElementById('bPal').textContent = '🎨 ' + PALETTES[palIdx].name;
 applySld();
+/* === أزرار: شفافية الأعماق + الكنتور === */
+sat.getContainer().style.filter = 'contrast(1.15) saturate(1.1)';
+var dt = document.getElementById('dtools');
+dt.style.width = 'max-content';
+dt.style.maxWidth = '94vw';
+dt.style.flexWrap = 'wrap';
+dt.style.justifyContent = 'center';
+
+var OPS = [0.92, 0.55, 0.3, 0];
+var opIdx = 0;
+var bOp = document.createElement('button');
+bOp.id = 'bOp';
+bOp.textContent = '👁️ 92%';
+dt.appendChild(bOp);
+bOp.onclick = function () {
+  opIdx = (opIdx + 1) % OPS.length;
+  depthStyled.setOpacity(OPS[opIdx]);
+  bOp.textContent = '👁️ ' + Math.round(OPS[opIdx] * 100) + '%';
+};
+
+var bCont = document.createElement('button');
+bCont.id = 'bCont';
+bCont.textContent = '〰️ كنتور';
+bCont.className = 'on';
+dt.appendChild(bCont);
+bCont.onclick = function () {
+  if (map.hasLayer(contours)) {
+    map.removeLayer(contours);
+    bCont.className = '';
+  } else {
+    contours.addTo(map);
+    bCont.className = 'on';
+  }
+};
