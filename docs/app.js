@@ -1,6 +1,6 @@
 var map = L.map('map', {maxZoom: 19, minZoom: 5}).setView([36.6, 3.0], 6);
 
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19, maxNativeZoom: 17, attribution: 'Tiles © Esri'
 }).addTo(map);
 
@@ -11,12 +11,48 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/Worl
   pane: 'labels', maxZoom: 19, maxNativeZoom: 17
 }).addTo(map);
 
-/* إخفاء كل أزرار ولوحات الأعماق */
+/* إخفاء أزرار الأعماق القديمة */
 ['bChl', 'bDepth', 'bPal', 'bShade', 'dtools', 'dlegend'].forEach(function (id) {
   var el = document.getElementById(id);
   if (el) el.style.display = 'none';
 });
-document.getElementById('legend').style.display = 'block';
+
+/* خريطة EMODnet بألوانها الأصلية */
+var emodnet = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
+  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true,
+  opacity: 0.9, maxZoom: 19, maxNativeZoom: 10, attribution: 'Bathymetry © EMODnet'
+});
+
+var chlLayer = null;
+var data = null;
+var bnd = null;
+var layersCtl = L.control.layers(null, {'EMODnet': emodnet}, {collapsed: true}).addTo(map);
+document.getElementById('info').textContent = 'جاري التحميل...';
+
+function getDepth(latlng) {
+  var url = 'https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(' + latlng.lng + '%20' + latlng.lat + ')';
+  return fetch(url)
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var v = null;
+      if (typeof j === 'number') v = j;
+      else if (j && typeof j.avg === 'number') v = j.avg;
+      else if (j && typeof j.depth === 'number') v = j.depth;
+      if (v === null || v >= 0) return '';
+      return 'العمق: ' + Math.abs(Math.round(v)) + ' متر';
+    })
+    .catch(function () { return ''; });
+}
+
+function updateUi() {
+  var chlOn = chlLayer && map.hasLayer(chlLayer);
+  document.getElementById('legend').style.display = chlOn ? 'block' : 'none';
+}
+map.on('overlayadd', function (e) {
+  if (chlLayer && e.layer === chlLayer && map.hasLayer(emodnet)) { /* الكلوروفيل فوق الأعماق */ }
+  updateUi();
+});
+map.on('overlayremove', updateUi);
 
 /* ===== الكلوروفيل ===== */
 var palette = [
@@ -35,18 +71,15 @@ for (var s = 0; s < N; s++) {
 }
 document.getElementById('bar').style.background = 'linear-gradient(to right,' + parts.join(',') + ')';
 
-var data = null;
-var bnd = null;
-document.getElementById('info').textContent = 'جاري التحميل...';
-
 map.on('click', function (e) {
-  var txt = 'خارج منطقة بيانات الكلوروفيل';
-  if (data && bnd) {
+  var txt = '';
+  if (chlLayer && map.hasLayer(chlLayer) && data && bnd) {
     var d = data;
     var ny = d.lats.length, nx = d.lons.length;
     var latAsc = d.lats[0] < d.lats[ny - 1];
     var f = (e.latlng.lat - bnd.minLat) / (bnd.maxLat - bnd.minLat);
     var g2 = (e.latlng.lng - bnd.minLon) / (bnd.maxLon - bnd.minLon);
+    txt = 'خارج منطقة بيانات الكلوروفيل';
     if (f >= 0 && f <= 1 && g2 >= 0 && g2 <= 1) {
       var k = Math.round(f * (ny - 1));
       var i2 = latAsc ? k : ny - 1 - k;
@@ -55,7 +88,13 @@ map.on('click', function (e) {
       txt = (val === null) ? 'لا توجد بيانات كلوروفيل هنا (يابسة أو غيوم)' : 'الكلوروفيل: ' + val + ' ملغ/م³';
     }
   }
-  L.popup().setLatLng(e.latlng).setContent(txt).openOn(map);
+  var popup = L.popup().setLatLng(e.latlng).setContent(txt || 'جاري قياس العمق...').openOn(map);
+  getDepth(e.latlng).then(function (dtxt) {
+    var all = txt;
+    if (dtxt) all = all ? all + '<br>' + dtxt : dtxt;
+    if (!all) all = 'العمق غير متوفر هنا';
+    popup.setContent(all);
+  });
 });
 
 fetch('chl_latest.json?' + Date.now())
@@ -117,9 +156,11 @@ fetch('chl_latest.json?' + Date.now())
     bctx.putImageData(img, 0, 0);
 
     var bounds = [[minLat, minLon], [maxLat, maxLon]];
-    L.imageOverlay(big.toDataURL(), bounds, {opacity: 1}).addTo(map);
+    chlLayer = L.imageOverlay(big.toDataURL(), bounds, {opacity: 1, zIndex: 400}).addTo(map);
+    layersCtl.addOverlay(chlLayer, 'الكلوروفيل');
     document.getElementById('info').innerHTML = 'الكلوروفيل في سواحل الجزائر<br>تاريخ البيانات: ' + d.date;
     map.fitBounds(bounds);
+    updateUi();
   })
   .catch(function () {
     document.getElementById('info').textContent = 'تعذر تحميل بيانات الكلوروفيل';
