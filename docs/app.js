@@ -347,3 +347,45 @@ bCont.onclick = function () {
     bCont.className = 'on';
   }
 };
+/* === لون كل 40 متر === */
+var STEP = 40;
+
+function buildSld(shade) {
+  var smooth = PALETTES[palIdx].smooth;
+  var e = '';
+  e += '<ColorMapEntry color="' + curCols[23] + '" quantity="-3000"/>';
+  e += '<ColorMapEntry color="' + curCols[22] + '" quantity="-2000"/>';
+  e += '<ColorMapEntry color="' + curCols[21] + '" quantity="-1500"/>';
+  e += '<ColorMapEntry color="' + curCols[20] + '" quantity="-1000"/>';
+  for (var j = 19; j >= 0; j--) {
+    var op = (smooth && j < 4) ? SHALLOW_OP[j] : 1;
+    e += '<ColorMapEntry color="' + curCols[j] + '" opacity="' + op + '" quantity="' + (-STEP * j) + '"/>';
+  }
+  e += '<ColorMapEntry color="#000000" opacity="0" quantity="' + (smooth ? 1 : 100000) + '"/>';
+  var sh = shade ? '<ShadedRelief><ReliefFactor>20</ReliefFactor></ShadedRelief>' : '';
+  return '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld"><NamedLayer><Name>emodnet:mean</Name><UserStyle><FeatureTypeStyle><Rule><RasterSymbolizer><ColorMap type="intervals">' + e + '</ColorMap>' + sh + '</RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
+}
+
+function buildLegend() {
+  var col = document.getElementById('dcol');
+  col.innerHTML = '';
+  for (var i = 0; i < 24; i++) {
+    var d = document.createElement('div');
+    d.style.height = (i < 20 ? 9 : 16) + 'px';
+    d.style.background = curCols[i];
+    col.appendChild(d);
+  }
+  var lab = document.getElementById('dlab');
+  lab.innerHTML = '';
+  lab.style.height = (20 * 9 + 4 * 16) + 'px';
+  var marks = [[0, '0'], [45, '200'], [90, '400'], [135, '600'], [180, '800'], [196, '1000'], [212, '1500'], [236, '2000+']];
+  for (var m = 0; m < marks.length; m++) {
+    var s = document.createElement('span');
+    s.textContent = marks[m][1];
+    s.style.top = marks[m][0] + 'px';
+    lab.appendChild(s);
+  }
+}
+
+buildLegend();
+applySld();
