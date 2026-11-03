@@ -81,6 +81,7 @@ var PALETTES = [
 var palIdx = 0;
 var shadeOn = true;
 var curCols = [];
+var SHALLOW_OP = [0.3, 0.3, 0.3, 0.6];
 
 function buildCols() {
   var p = PALETTES[palIdx];
@@ -97,7 +98,8 @@ function buildSld(shade) {
   e += '<ColorMapEntry color="' + curCols[21] + '" quantity="-500"/>';
   e += '<ColorMapEntry color="' + curCols[20] + '" quantity="-200"/>';
   for (var j = 19; j >= 0; j--) {
-    e += '<ColorMapEntry color="' + curCols[j] + '" quantity="' + (-10 * j) + '"/>';
+    var op = (smooth && j < 4) ? SHALLOW_OP[j] : 1;
+    e += '<ColorMapEntry color="' + curCols[j] + '" opacity="' + op + '" quantity="' + (-10 * j) + '"/>';
   }
   e += '<ColorMapEntry color="#000000" opacity="0" quantity="' + (smooth ? 1 : 100000) + '"/>';
   var sh = shade ? '<ShadedRelief><ReliefFactor>20</ReliefFactor></ShadedRelief>' : '';
@@ -132,7 +134,7 @@ document.getElementById('bPal').textContent = '🎨 ' + PALETTES[palIdx].name;
 /* ===== طبقات EMODnet ===== */
 var WMS = 'https://ows.emodnet-bathymetry.eu/wms';
 var depthStyled = L.tileLayer.wms(WMS, {
-  layers: 'emodnet:mean', format: 'image/png', transparent: true, opacity: 0.88, maxZoom: 19, maxNativeZoom: 10,
+  layers: 'emodnet:mean', format: 'image/png', transparent: true, opacity: 0.92, maxZoom: 19, maxNativeZoom: 10,
   sld_body: buildSld(shadeOn), attribution: 'Bathymetry © EMODnet'
 });
 var depthRainbow = L.tileLayer.wms(WMS, {
@@ -224,4 +226,89 @@ function setMode(m) {
   if (isChl) {
     if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
     if (map.hasLayer(depthRainbow)) map.removeLayer(depthRainbow);
-    if (chlLayer &&
+    if (chlLayer && !map.hasLayer(chlLayer)) chlLayer.addTo(map);
+  } else {
+    if (chlLayer && map.hasLayer(chlLayer)) map.removeLayer(chlLayer);
+    if (!map.hasLayer(dl)) dl.addTo(map);
+  }
+  document.getElementById('legend').style.display = isChl ? 'block' : 'none';
+  document.getElementById('dlegend').style.display = (!isChl && !usingFallback) ? 'block' : 'none';
+  document.getElementById('dtools').style.display = (!isChl && !usingFallback) ? 'flex' : 'none';
+  document.getElementById('info').innerHTML = isChl ? chlInfo : (usingFallback ? 'خريطة الأعماق (ألوان EMODnet)' : 'خريطة الأعماق<br>المصدر: EMODnet');
+  document.getElementById('bChl').className = isChl ? 'on' : '';
+  document.getElementById('bDepth').className = isChl ? '' : 'on';
+}
+document.getElementById('bChl').onclick = function () { setMode('chl'); };
+document.getElementById('bDepth').onclick = function () { setMode('depth'); };
+
+function getDepth(latlng) {
+  var url = 'https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(' + latlng.lng + '%20' + latlng.lat + ')';
+  return fetch(url)
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var v = null;
+      if (typeof j === 'number') v = j;
+      else if (j && typeof j.avg === 'number') v = j.avg;
+      else if (j && typeof j.depth === 'number') v = j.depth;
+      if (v === null || v >= 0) return '';
+      return 'العمق: ' + Math.abs(Math.round(v)) + ' متر';
+    })
+    .catch(function () { return ''; });
+}
+
+map.on('click', function (e) {
+  var chlTxt = '';
+  if (mode === 'chl' && data && bnd) {
+    var d = data;
+    var ny = d.lats.length, nx = d.lons.length;
+    var latAsc = d.lats[0] < d.lats[ny - 1];
+    var f = (e.latlng.lat - bnd.minLat) / (bnd.maxLat - bnd.minLat);
+    var g2 = (e.latlng.lng - bnd.minLon) / (bnd.maxLon - bnd.minLon);
+    chlTxt = 'خارج منطقة بيانات الكلوروفيل';
+    if (f >= 0 && f <= 1 && g2 >= 0 && g2 <= 1) {
+      var k = Math.round(f * (ny - 1));
+      var i2 = latAsc ? k : ny - 1 - k;
+      var j2 = Math.round(g2 * (nx - 1));
+      var val = d.values[i2][j2];
+      chlTxt = (val === null) ? 'لا توجد بيانات كلوروفيل هنا (يابسة أو غيوم)' : 'الكلوروفيل: ' + val + ' ملغ/م³';
+    }
+  }
+  var popup = L.popup().setLatLng(e.latlng).setContent(chlTxt || 'جاري قياس العمق...').openOn(map);
+  getDepth(e.latlng).then(function (dtxt) {
+    var all = chlTxt;
+    if (dtxt) all = all ? all + '<br>' + dtxt : dtxt;
+    if (!all) all = 'العمق غير متوفر هنا';
+    popup.setContent(all);
+  });
+});
+
+fetch('chl_latest.json?' + Date.now())
+  .then(function (r) { return r.json(); })
+  .then(function (d) {
+    data = d;
+    var ny = d.lats.length, nx = d.lons.length;
+    var latAsc = d.lats[0] < d.lats[ny - 1];
+    var minLat = Math.min.apply(null, d.lats), maxLat = Math.max.apply(null, d.lats);
+    var minLon = Math.min.apply(null, d.lons), maxLon = Math.max.apply(null, d.lons);
+    bnd = {minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon};
+
+    var grid = new Float32Array(nx * ny);
+    for (var r = 0; r < ny; r++) {
+      var di = latAsc ? ny - 1 - r : r;
+      for (var c = 0; c < nx; c++) {
+        var v = d.values[di][c];
+        grid[r * nx + c] = (v === null || v === undefined || v <= 0) ? NaN : Math.log10(v);
+      }
+    }
+
+    var scale = Math.max(1, Math.min(4, Math.floor(2400 / nx)));
+    var W = nx * scale, H = ny * scale;
+    var big = document.createElement('canvas');
+    big.width = W; big.height = H;
+    var bctx = big.getContext('2d');
+    var img = bctx.createImageData(W, H);
+
+    for (var y = 0; y < H; y++) {
+      var fy = (y + 0.5) / scale - 0.5;
+      var y0 = Math.floor(fy), ty = fy - y0;
+      for (v
