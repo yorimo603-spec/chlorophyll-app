@@ -128,10 +128,16 @@ var contours = L.tileLayer.wms(WMS, {
   layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', maxZoom: 19, attribution: 'Bathymetry © EMODnet'
 });
 
-var gebco = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
-  layers: 'GEBCO_LATEST', format: 'image/png', version: '1.3.0', transparent: true, opacity: 0.9, maxZoom: 19,
+var gebcoShaded = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+  layers: 'gebco_latest', format: 'image/png', version: '1.3.0', transparent: true, opacity: 0.95, maxZoom: 19,
   attribution: 'Bathymetry © GEBCO'
 });
+var gebcoFlat = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+  layers: 'gebco_latest_2', format: 'image/png', version: '1.3.0', transparent: true, opacity: 0.95, maxZoom: 19,
+  attribution: 'Bathymetry © GEBCO'
+});
+var worldShade = true;
+function worldLayer() { return worldShade ? gebcoShaded : gebcoFlat; }
 
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 650;
@@ -183,6 +189,13 @@ document.getElementById('mPal').onclick = function () {
   document.getElementById('mPal').textContent = '🎨 ' + PALETTES[palIdx].name;
 };
 document.getElementById('mShade').onclick = function () {
+  if (mode === 'world') {
+    if (map.hasLayer(worldLayer())) map.removeLayer(worldLayer());
+    worldShade = !worldShade;
+    worldLayer().addTo(map);
+    document.getElementById('mShade').className = worldShade ? 'on' : '';
+    return;
+  }
   shadeOn = !shadeOn;
   document.getElementById('mShade').className = shadeOn ? 'on' : '';
   applySld();
@@ -199,18 +212,23 @@ function setMode(m) {
     if (map.hasLayer(depthRainbow)) map.removeLayer(depthRainbow);
     if (map.hasLayer(contours)) map.removeLayer(contours);
   }
-  if (!isWorld && map.hasLayer(gebco)) map.removeLayer(gebco);
+  if (!isWorld) {
+    if (map.hasLayer(gebcoShaded)) map.removeLayer(gebcoShaded);
+    if (map.hasLayer(gebcoFlat)) map.removeLayer(gebcoFlat);
+  }
   if (isChl) {
     if (chlLayer && !map.hasLayer(chlLayer)) chlLayer.addTo(map);
   } else if (isDepth) {
     if (!map.hasLayer(dl)) dl.addTo(map);
     if (!map.hasLayer(contours)) contours.addTo(map);
   } else {
-    if (!map.hasLayer(gebco)) gebco.addTo(map);
+    if (!map.hasLayer(worldLayer())) worldLayer().addTo(map);
   }
   document.getElementById('legend').style.display = isChl ? 'block' : 'none';
   document.getElementById('mlegend').style.display = (isDepth && !usingFallback) ? 'block' : 'none';
-  document.getElementById('mtools').style.display = (isDepth && !usingFallback) ? 'flex' : 'none';
+  document.getElementById('mtools').style.display = ((isDepth && !usingFallback) || isWorld) ? 'flex' : 'none';
+  document.getElementById('mPal').style.display = isWorld ? 'none' : '';
+  document.getElementById('mShade').className = (isWorld ? worldShade : shadeOn) ? 'on' : '';
   document.getElementById('info').innerHTML = isChl ? chlInfo : (isWorld ? 'World depth map (GEBCO)<br>Lower detail than EMODnet' : (usingFallback ? 'Depth map (EMODnet colours)' : 'Depth map: one colour per 10 m<br>Source: EMODnet (Europe and Mediterranean)'));
   document.getElementById('mChl').className = isChl ? 'on' : '';
   document.getElementById('mDepth').className = isDepth ? 'on' : '';
