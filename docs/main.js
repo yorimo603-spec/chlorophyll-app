@@ -34,7 +34,7 @@ function addBox(id, html) {
   document.body.appendChild(d);
   return d;
 }
-addBox('mmodes', '<button id="mChl" class="on">🌊 الكلوروفيل</button><button id="mDepth">📏 Depth</button>');
+addBox('mmodes', '<button id="mChl" class="on">🌊 الكلوروفيل</button><button id="mDepth">📏 Depth</button><button id="mWorld">🌍 World</button>');
 addBox('mtools', '<button id="mPal">🎨 Palette</button><button id="mShade">⛰️ Shading</button>');
 addBox('mlegend', '<div id="mtitle">Depth (m)</div><div id="mwrap"><div id="mcol"></div><div id="mlab"></div></div>');
 
@@ -128,6 +128,11 @@ var contours = L.tileLayer.wms(WMS, {
   layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', maxZoom: 19, attribution: 'Bathymetry © EMODnet'
 });
 
+var gebco = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+  layers: 'GEBCO_LATEST', format: 'image/png', version: '1.3.0', transparent: true, opacity: 0.9, maxZoom: 19,
+  attribution: 'Bathymetry © GEBCO'
+});
+
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 650;
 map.getPane('labels').style.pointerEvents = 'none';
@@ -186,27 +191,34 @@ document.getElementById('mShade').onclick = function () {
 /* ===== تبديل الوضع: كلوروفيل / أعماق ===== */
 function setMode(m) {
   mode = m;
-  var isChl = (m === 'chl');
+  var isChl = (m === 'chl'), isWorld = (m === 'world'), isDepth = (m === 'depth');
   var dl = usingFallback ? depthRainbow : depthStyled;
-  if (isChl) {
+  if (!isChl && chlLayer && map.hasLayer(chlLayer)) map.removeLayer(chlLayer);
+  if (!isDepth) {
     if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
     if (map.hasLayer(depthRainbow)) map.removeLayer(depthRainbow);
     if (map.hasLayer(contours)) map.removeLayer(contours);
+  }
+  if (!isWorld && map.hasLayer(gebco)) map.removeLayer(gebco);
+  if (isChl) {
     if (chlLayer && !map.hasLayer(chlLayer)) chlLayer.addTo(map);
-  } else {
-    if (chlLayer && map.hasLayer(chlLayer)) map.removeLayer(chlLayer);
+  } else if (isDepth) {
     if (!map.hasLayer(dl)) dl.addTo(map);
     if (!map.hasLayer(contours)) contours.addTo(map);
+  } else {
+    if (!map.hasLayer(gebco)) gebco.addTo(map);
   }
   document.getElementById('legend').style.display = isChl ? 'block' : 'none';
-  document.getElementById('mlegend').style.display = (!isChl && !usingFallback) ? 'block' : 'none';
-  document.getElementById('mtools').style.display = (!isChl && !usingFallback) ? 'flex' : 'none';
-  document.getElementById('info').innerHTML = isChl ? chlInfo : (usingFallback ? 'Depth map (EMODnet colours)' : 'Depth map: one colour per 10 m<br>Source: EMODnet');
+  document.getElementById('mlegend').style.display = (isDepth && !usingFallback) ? 'block' : 'none';
+  document.getElementById('mtools').style.display = (isDepth && !usingFallback) ? 'flex' : 'none';
+  document.getElementById('info').innerHTML = isChl ? chlInfo : (isWorld ? 'World depth map (GEBCO)<br>Lower detail than EMODnet' : (usingFallback ? 'Depth map (EMODnet colours)' : 'Depth map: one colour per 10 m<br>Source: EMODnet (Europe and Mediterranean)'));
   document.getElementById('mChl').className = isChl ? 'on' : '';
-  document.getElementById('mDepth').className = isChl ? '' : 'on';
+  document.getElementById('mDepth').className = isDepth ? 'on' : '';
+  document.getElementById('mWorld').className = isWorld ? 'on' : '';
 }
 document.getElementById('mChl').onclick = function () { setMode('chl'); };
 document.getElementById('mDepth').onclick = function () { setMode('depth'); };
+document.getElementById('mWorld').onclick = function () { setMode('world'); };
 
 /* ===== الكلوروفيل ===== */
 var STOPS = [
