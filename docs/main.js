@@ -5,6 +5,129 @@ var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Worl
   maxZoom: 19, maxNativeZoom: 17, attribution: 'Tiles © Esri'
 }).addTo(map);
 
+/* إخفاء العناصر القديمة من الصفحة */
+['modes', 'bChl', 'bDepth', 'bPal', 'bShade', 'dtools', 'dlegend'].forEach(function (id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+});
+
+/* ===== تنسيق الأزرار والمفتاح (يُضاف من هنا) ===== */
+var st = document.createElement('style');
+st.textContent =
+  '.mbox{position:absolute;z-index:1000;background:rgba(255,255,255,.92);padding:6px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.4);font-size:12px;color:#111}' +
+  '.mbox button{border:0;border-radius:8px;padding:9px 14px;font-size:15px;background:#e5e7eb;color:#111}' +
+  '.mbox button.on{background:#0b63d6;color:#fff}' +
+  '#mmodes{top:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px}' +
+  '#mtools{top:76px;left:50%;transform:translateX(-50%);display:none;gap:6px}' +
+  '#mtools button{font-size:13px;padding:7px 10px}' +
+  '#mlegend{bottom:20px;right:10px;display:none;padding:8px 12px}' +
+  '#mtitle{text-align:center;margin-bottom:4px}' +
+  '#mwrap{display:flex;direction:ltr;gap:6px;align-items:stretch}' +
+  '#mcol{display:flex;flex-direction:column;width:22px}' +
+  '#mlab{position:relative;width:46px}' +
+  '#mlab span{position:absolute;left:0;transform:translateY(-50%);white-space:nowrap}';
+document.head.appendChild(st);
+
+function addBox(id, html) {
+  var d = document.createElement('div');
+  d.id = id; d.className = 'mbox'; d.innerHTML = html;
+  document.body.appendChild(d);
+  return d;
+}
+addBox('mmodes', '<button id="mChl" class="on">🌊 الكلوروفيل</button><button id="mDepth">📏 Depth</button>');
+addBox('mtools', '<button id="mPal">🎨 Palette</button><button id="mShade">⛰️ Shading</button>');
+addBox('mlegend', '<div id="mtitle">Depth (m)</div><div id="mwrap"><div id="mcol"></div><div id="mlab"></div></div>');
+
+document.getElementById('info').textContent = 'جاري التحميل...';
+
+/* ===== ألوان الأعماق ===== */
+function hex2rgb(h) {
+  return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16)];
+}
+function toHex(n) {
+  var x = Math.max(0, Math.min(255, Math.round(n))).toString(16);
+  return x.length < 2 ? '0' + x : x;
+}
+function lerpPal(stops, t) {
+  var n = stops.length - 1;
+  var x = Math.max(0, Math.min(1, t)) * n;
+  var i = Math.min(n - 1, Math.floor(x));
+  var u = x - i;
+  var a = hex2rgb(stops[i]), b = hex2rgb(stops[i + 1]);
+  return '#' + toHex(a[0] + (b[0] - a[0]) * u) + toHex(a[1] + (b[1] - a[1]) * u) + toHex(a[2] + (b[2] - a[2]) * u);
+}
+var PALETTES = [
+  {name: 'Spectrum', stops: ['#d7191c', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5', '#3288bd', '#5e4fa2'], tail: ['#4a2f80', '#33225f', '#1f1640', '#0e0a24']},
+  {name: 'Viridis', stops: ['#fde725', '#5ec962', '#21918c', '#3b528b', '#440154'], tail: ['#2c0b45', '#1f0933', '#150624', '#0b0314']},
+  {name: 'Blue', stops: ['#e6f5ff', '#a6d8f5', '#5aa9e0', '#2a6fba', '#123f86'], tail: ['#0c2f6b', '#082254', '#05173d', '#030d26']}
+];
+var palIdx = 0;
+var shadeOn = false;
+var curCols = [];
+
+function buildCols() {
+  var p = PALETTES[palIdx];
+  curCols = [];
+  for (var i = 0; i < 20; i++) curCols.push(lerpPal(p.stops, i / 19));
+  for (var j = 0; j < 4; j++) curCols.push(p.tail[j]);
+}
+
+function buildSld(shade) {
+  var e = '';
+  e += '<ColorMapEntry color="' + curCols[23] + '" quantity="-2000"/>';
+  e += '<ColorMapEntry color="' + curCols[22] + '" quantity="-1000"/>';
+  e += '<ColorMapEntry color="' + curCols[21] + '" quantity="-500"/>';
+  e += '<ColorMapEntry color="' + curCols[20] + '" quantity="-200"/>';
+  for (var j = 19; j >= 0; j--) {
+    e += '<ColorMapEntry color="' + curCols[j] + '" quantity="' + (-10 * j) + '"/>';
+  }
+  e += '<ColorMapEntry color="#000000" opacity="0" quantity="100000"/>';
+  var sh = shade ? '<ShadedRelief><ReliefFactor>80</ReliefFactor></ShadedRelief>' : '';
+  return '<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld"><NamedLayer><Name>emodnet:mean</Name><UserStyle><FeatureTypeStyle><Rule><RasterSymbolizer><ColorMap type="intervals">' + e + '</ColorMap>' + sh + '</RasterSymbolizer></Rule></FeatureTypeStyle></UserStyle></NamedLayer></StyledLayerDescriptor>';
+}
+
+function buildLegend() {
+  var col = document.getElementById('mcol');
+  col.innerHTML = '';
+  for (var i = 0; i < 24; i++) {
+    var d = document.createElement('div');
+    d.style.height = (i < 20 ? 9 : 16) + 'px';
+    d.style.background = curCols[i];
+    col.appendChild(d);
+  }
+  var lab = document.getElementById('mlab');
+  lab.innerHTML = '';
+  lab.style.height = (20 * 9 + 4 * 16) + 'px';
+  var marks = [[0, '0'], [45, '50'], [90, '100'], [135, '150'], [180, '200'], [196, '500'], [212, '1000'], [236, '2000+']];
+  for (var m = 0; m < marks.length; m++) {
+    var s = document.createElement('span');
+    s.textContent = marks[m][1];
+    s.style.top = marks[m][0] + 'px';
+    lab.appendChild(s);
+  }
+}
+
+buildCols();
+buildLegend();
+document.getElementById('mPal').textContent = '🎨 ' + PALETTES[palIdx].name;
+
+/* ===== طبقات EMODnet ===== */
+var WMS = 'https://ows.emodnet-bathymetry.eu/wms';
+var depthStyled = L.tileLayer.wms(WMS, {
+  layers: 'emodnet:mean', format: 'image/png', transparent: true, opacity: 0.88, maxZoom: 19,
+  sld_body: buildSld(false), attribution: 'Bathymetry © EMODnet'
+});
+var depthRainbow = L.tileLayer.wms(WMS, {
+  layers: 'emodnet:mean_rainbowcolour', format: 'image/png', transparent: true, opacity: 0.9, maxZoom: 19, attribution: 'Bathymetry © EMODnet'
+});
+
+map.createPane('depth');
+map.getPane('depth').style.zIndex = 450;
+map.getPane('depth').style.pointerEvents = 'none';
+var contours = L.tileLayer.wms(WMS, {
+  layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', maxZoom: 19, attribution: 'Bathymetry © EMODnet'
+});
+
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 650;
 map.getPane('labels').style.pointerEvents = 'none';
@@ -12,42 +135,78 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/Worl
   pane: 'labels', maxZoom: 19, maxNativeZoom: 17
 }).addTo(map);
 
-/* إخفاء أزرار الأعماق القديمة */
-['bChl', 'bDepth', 'bPal', 'bShade', 'dtools', 'dlegend'].forEach(function (id) {
-  var el = document.getElementById(id);
-  if (el) el.style.display = 'none';
-});
-
+var mode = 'chl';
+var usingFallback = false;
+var gotTile = false;
+var errCount = 0;
 var chlLayer = null;
 var data = null;
 var bnd = null;
-var layersCtl = L.control.layers(null, null, {collapsed: true}).addTo(map);
-document.getElementById('info').textContent = 'جاري التحميل...';
+var chlInfo = 'جاري التحميل...';
 
-function getDepth(latlng) {
-  var url = 'https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(' + latlng.lng + '%20' + latlng.lat + ')';
-  return fetch(url)
-    .then(function (r) { return r.json(); })
-    .then(function (j) {
-      var v = null;
-      if (typeof j === 'number') v = j;
-      else if (j && typeof j.avg === 'number') v = j.avg;
-      else if (j && typeof j.depth === 'number') v = j.depth;
-      if (v === null || v >= 0) return '';
-      return 'Depth: ' + Math.abs(Math.round(v)) + ' m';
-    })
-    .catch(function () { return ''; });
+function applySld() {
+  gotTile = false;
+  errCount = 0;
+  depthStyled.setParams({sld_body: buildSld(shadeOn)});
 }
 
-/* ===== واجهة المستخدم ===== */
-function updateUi() {
-  var chlOn = chlLayer && map.hasLayer(chlLayer);
-  document.getElementById('legend').style.display = chlOn ? 'block' : 'none';
-}
-map.on('overlayadd', function (e) {
-  updateUi();
+depthStyled.on('tileload', function () { gotTile = true; });
+depthStyled.on('tileerror', function () {
+  errCount++;
+  if (!gotTile && errCount >= 4) {
+    if (shadeOn) {
+      shadeOn = false;
+      document.getElementById('mShade').className = '';
+      applySld();
+      document.getElementById('info').innerHTML = 'Shading is not supported by the server<br>It was turned off';
+    } else if (!usingFallback) {
+      usingFallback = true;
+      if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
+      if (mode === 'depth') depthRainbow.addTo(map);
+      document.getElementById('mlegend').style.display = 'none';
+      document.getElementById('mtools').style.display = 'none';
+      document.getElementById('info').innerHTML = 'Could not colour every 10 m<br>Showing standard EMODnet colours';
+    }
+  }
 });
-map.on('overlayremove', updateUi);
+
+document.getElementById('mPal').onclick = function () {
+  palIdx = (palIdx + 1) % PALETTES.length;
+  buildCols();
+  buildLegend();
+  applySld();
+  document.getElementById('mPal').textContent = '🎨 ' + PALETTES[palIdx].name;
+};
+document.getElementById('mShade').onclick = function () {
+  shadeOn = !shadeOn;
+  document.getElementById('mShade').className = shadeOn ? 'on' : '';
+  applySld();
+};
+
+/* ===== تبديل الوضع: كلوروفيل / أعماق ===== */
+function setMode(m) {
+  mode = m;
+  var isChl = (m === 'chl');
+  var dl = usingFallback ? depthRainbow : depthStyled;
+  if (isChl) {
+    if (map.hasLayer(depthStyled)) map.removeLayer(depthStyled);
+    if (map.hasLayer(depthRainbow)) map.removeLayer(depthRainbow);
+    if (map.hasLayer(contours)) map.removeLayer(contours);
+    if (chlLayer && !map.hasLayer(chlLayer)) chlLayer.addTo(map);
+  } else {
+    if (chlLayer && map.hasLayer(chlLayer)) map.removeLayer(chlLayer);
+    if (!map.hasLayer(dl)) dl.addTo(map);
+    if (!map.hasLayer(contours)) contours.addTo(map);
+  }
+  document.getElementById('legend').style.display = isChl ? 'block' : 'none';
+  document.getElementById('mlegend').style.display = (!isChl && !usingFallback) ? 'block' : 'none';
+  document.getElementById('mtools').style.display = (!isChl && !usingFallback) ? 'flex' : 'none';
+  document.getElementById('info').innerHTML = isChl ? chlInfo : (usingFallback ? 'Depth map (EMODnet colours)' : 'Depth map: one colour per 10 m<br>Source: EMODnet');
+  document.getElementById('mChl').className = isChl ? 'on' : '';
+  document.getElementById('mDepth').className = isChl ? '' : 'on';
+}
+document.getElementById('mChl').onclick = function () { setMode('chl'); };
+document.getElementById('mDepth').onclick = function () { setMode('depth'); };
 
 /* ===== الكلوروفيل ===== */
 var STOPS = [
@@ -78,7 +237,6 @@ for (var si = 0; si < STOPS.length; si++) {
   var sc = STOPS[si][1];
   gp.push('rgb(' + sc[0] + ',' + sc[1] + ',' + sc[2] + ') ' + (STOPS[si][0] * 100) + '%');
 }
-/* تحديث أرقام شريط الألوان */
 (function () {
   var all = document.getElementById('legend').getElementsByTagName('*');
   for (var q = 0; q < all.length; q++) {
@@ -117,10 +275,26 @@ function smoothGrid(src, nx, ny) {
   return out;
 }
 
+/* ===== العمق عند النقر ===== */
+function getDepth(latlng) {
+  var url = 'https://rest.emodnet-bathymetry.eu/depth_sample?geom=POINT(' + latlng.lng + '%20' + latlng.lat + ')';
+  return fetch(url)
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var v = null;
+      if (typeof j === 'number') v = j;
+      else if (j && typeof j.avg === 'number') v = j.avg;
+      else if (j && typeof j.depth === 'number') v = j.depth;
+      if (v === null || v >= 0) return '';
+      return 'Depth: ' + Math.abs(Math.round(v)) + ' m';
+    })
+    .catch(function () { return ''; });
+}
+
 /* ===== النقر على الخريطة ===== */
 map.on('click', function (e) {
   var txt = '';
-  if (chlLayer && map.hasLayer(chlLayer) && data && bnd) {
+  if (mode === 'chl' && data && bnd) {
     var d = data;
     var ny = d.lats.length, nx = d.lons.length;
     var latAsc = d.lats[0] < d.lats[ny - 1];
@@ -135,13 +309,12 @@ map.on('click', function (e) {
       txt = (val === null) ? 'لا توجد بيانات كلوروفيل هنا (يابسة أو غيوم)' : 'الكلوروفيل: ' + val + ' ملغ/م³';
     }
   }
-  var popup = L.popup({maxWidth: 270}).setLatLng(e.latlng).setContent((txt || '') + (txt ? '<br>' : '') + 'جاري تحميل المعلومات...').openOn(map);
+  var popup = L.popup({maxWidth: 270}).setLatLng(e.latlng).setContent(txt || 'Measuring depth...').openOn(map);
   getDepth(e.latlng).then(function (dep) {
-    var parts2 = [];
-    if (txt) parts2.push(txt);
-    if (dep) parts2.push(dep);
-    if (!parts2.length) parts2.push('المعلومات غير متوفرة هنا');
-    popup.setContent(parts2.join('<br>'));
+    var all = txt;
+    if (dep) all = all ? all + '<br>' + dep : dep;
+    if (!all) all = 'Depth not available here';
+    popup.setContent(all);
   });
 });
 
@@ -206,74 +379,12 @@ fetch('chl_latest.json?' + Date.now())
     bctx.putImageData(img, 0, 0);
 
     var bounds = [[minLat, minLon], [maxLat, maxLon]];
-    chlLayer = L.imageOverlay(big.toDataURL(), bounds, {opacity: 1, zIndex: 400}).addTo(map);
-    chlLayer.getElement().style.imageRendering = 'auto';
-    layersCtl.addOverlay(chlLayer, 'الكلوروفيل');
-    document.getElementById('info').innerHTML = 'الكلوروفيل في سواحل الجزائر<br>تاريخ البيانات: ' + d.date;
+    chlLayer = L.imageOverlay(big.toDataURL(), bounds, {opacity: 1});
+    chlInfo = 'الكلوروفيل في سواحل الجزائر<br>تاريخ البيانات: ' + d.date;
     map.fitBounds(bounds);
-    updateUi();
+    setMode(mode);
   })
   .catch(function () {
-    document.getElementById('info').textContent = 'تعذر تحميل بيانات الكلوروفيل';
+    chlInfo = 'تعذر تحميل بيانات الكلوروفيل';
+    document.getElementById('info').textContent = chlInfo;
   });
-
-/* ===== الأعماق + الكنتور + التظليل (EMODnet) ===== */
-(function () {
-  map.createPane('depthPane');
-  map.getPane('depthPane').style.zIndex = 300;
-  map.getPane('depthPane').style.pointerEvents = 'none';
-  map.createPane('shadePane');
-  map.getPane('shadePane').style.zIndex = 310;
-  map.getPane('shadePane').style.pointerEvents = 'none';
-
-  var wms = 'https://ows.emodnet-bathymetry.eu/wms';
-  function opts(pane, extra) {
-    return Object.assign({
-      format: 'image/png', transparent: true, version: '1.3.0',
-      pane: pane, attribution: '© EMODnet Bathymetry'
-    }, extra);
-  }
-
-  var depth = L.tileLayer.wms(wms, opts('depthPane', {layers: 'emodnet:mean_multicolour', opacity: 0.6}));
-  var cont = L.tileLayer.wms(wms, opts('depthPane', {layers: 'emodnet:contours'}));
-  layersCtl.addOverlay(depth, '🌊 Depth');
-  layersCtl.addOverlay(cont, '〰️ Contours');
-  depth.addTo(map);
-
-  /* التظليل: نبحث عنه تلقائياً في قائمة طبقات الخادم */
-  fetch(wms + '?service=WMS&request=GetCapabilities&version=1.3.0')
-    .then(function (r) { return r.text(); })
-    .then(function (t) {
-      var xml = new DOMParser().parseFromString(t, 'text/xml');
-      var names = Array.prototype.map.call(xml.getElementsByTagName('Name'), function (n) { return n.textContent; });
-      var found = names.filter(function (n) { return /hillshade|shade|relief/i.test(n); })[0];
-      console.log('EMODnet layers:', names.join(', '));
-      if (found) {
-        var shade = L.tileLayer.wms(wms, opts('shadePane', {layers: found, opacity: 0.5}));
-        layersCtl.addOverlay(shade, '⛰️ Shading');
-        shade.addTo(map);
-      } else {
-        layersCtl.addOverlay(L.layerGroup([]), '⛰️ Shading (not available)');
-      }
-    })
-    .catch(function () {});
-
-  var levels = [0.92, 0.55, 0.3], idx = 1;
-  var eye = L.control({position: 'topleft'});
-  eye.onAdd = function () {
-    var d = L.DomUtil.create('div', 'leaflet-bar');
-    var a = L.DomUtil.create('a', '', d);
-    a.href = '#';
-    a.title = 'Depth transparency';
-    a.innerHTML = '👁️';
-    a.style.cssText = 'font-size:18px;line-height:30px;text-align:center;width:30px;height:30px;display:block;background:#fff';
-    L.DomEvent.disableClickPropagation(d);
-    L.DomEvent.on(a, 'click', function (e) {
-      L.DomEvent.preventDefault(e);
-      idx = (idx + 1) % levels.length;
-      depth.setOpacity(levels[idx]);
-    });
-    return d;
-  };
-  eye.addTo(map);
-})();
