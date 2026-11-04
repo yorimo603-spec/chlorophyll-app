@@ -128,16 +128,124 @@ var contours = L.tileLayer.wms(WMS, {
   layers: 'emodnet:contours', format: 'image/png', transparent: true, pane: 'depth', maxZoom: 19, attribution: 'Bathymetry © EMODnet'
 });
 
+/* ===== العالم: بيانات الارتفاعات (Terrarium) تُلوَّن في المتصفح ===== */
+var TERR_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 var gebcoShaded = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
   layers: 'gebco_latest', format: 'image/png', version: '1.3.0', transparent: true, opacity: 0.95, maxZoom: 19,
   attribution: 'Bathymetry © GEBCO'
 });
-var gebcoFlat = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
-  layers: 'gebco_latest_2', format: 'image/png', version: '1.3.0', transparent: true, opacity: 0.95, maxZoom: 19,
-  attribution: 'Bathymetry © GEBCO'
+
+function depthIndex(d) {
+  if (d > 2000) return 23;
+  if (d > 1000) return 22;
+  if (d > 500) return 21;
+  if (d > 200) return 20;
+  return Math.max(0, Math.min(19, Math.ceil(d / 10) - 1));
+}
+
+var WorldDepth = L.GridLayer.extend({
+  options: {tileSize: 256, maxNativeZoom: 10, opacity: 0.9, attribution: 'Elevation: Mapzen/GEBCO/ETOPO (AWS)'},
+  createTile: function (coords, done) {
+    var tile = L.DomUtil.create('canvas', 'leaflet-tile');
+    tile.width = 256; tile.height = 256;
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      try {
+        var cv = document.createElement('canvas');
+        cv.width = 256; cv.height = 256;
+        var cx = cv.getContext('2d');
+        cx.drawImage(img, 0, 0);
+        var src = cx.getImageData(0, 0, 256, 256).data;
+        var el = new Float32Array(256 * 256);
+        for (var i = 0; i < 65536; i++) {
+          el[i] = src[i * 4] * 256 + src[i * 4 + 1] + src[i * 4 + 2] / 256 - 32768;
+        }
+        var ctx = tile.getContext('2d');
+        var out = ctx.createImageData(256, 256);
+        var n = Math.pow(2, coords.z);
+        var latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * (coords.y + 0.5) / n)));
+        var cell = 156543.03 * Math.cos(latRad) / n;
+        var zf = 10;
+        var az = 315 * Math.PI / 180, zen = 45 * Math.PI / 180;
+        var cosZ = Math.cos(zen), sinZ = Math.sin(zen);
+        for (var y = 0; y < 256; y++) {
+          for (var x = 0; x < 256; x++) {
+            var k = y * 256 + x;
+            var e = el[k];
+            if (e >= 0) continue;
+            var c = hex2rgb(curCols[depthIndex(-e)]);
+            var f = 1;
+            if (shadeOn) {
+              var xl = el[y * 256 + Math.max(0, x - 1)], xr = el[y * 256 + Math.min(255, x + 1)];
+              var yu = el[Math.max(0, y - 1) * 256 + x], yd = el[Math.min(255, y + 1) * 256 + x];
+              var dzx = (xr - xl) / (2 * cell) * zf, dzy = (yd - yu) / (2 * cell) * zf;
+              var slope = Math.atan(Math.sqrt(dzx * dzx + dzy * dzy));
+              var asp = Math.atan2(dzy, -dzx);
+              var hs = cosZ * Math.cos(slope) + sinZ * Math.sin(slope) * Math.cos(az - asp);
+              f = Math.max(0.45, Math.min(1.6, hs / 0.707));
+            }
+            var p = k * 4;
+            out.data[p] = Math.min(255, c[0] * f);
+            out.data[p + 1] = Math.min(255, c[1] * f);
+            out.data[p + 2] = Math.min(255, c[2] * f);
+            out.data[p + 3] = 235;
+          }
+        }
+        ctx.putImageData(out, 0, 0);
+        done(null, tile);
+      } catch (err) {
+        done(err, tile);
+      }
+    };
+    img.onerror = function () { done(new Error('tile'), tile); };
+    img.src = TERR_URL.replace('{z}', coords.z).replace('{x}', coords.x).replace('{y}', coords.y);
+    return tile;
+  }
 });
-var worldShade = true;
-function worldLayer() { return worldShade ? gebcoShaded : gebcoFlat; }
+var worldDepth = new WorldDepth();
+var worldFallback = false;
+var wGot = false, wErr = 0;
+worldDepth.on('tileload', function () { wGot = true; });
+worldDepth.on('tileerror', function () {
+  wErr++;
+  if (!wGot && wErr >= 6 && !worldFallback) {
+    worldFallback = true;
+    if (map.hasLayer(worldDepth)) map.removeLayer(worldDepth);
+    if (mode === 'world') gebcoShaded.addTo(map);
+    document.getElementById('mlegend').style.display = 'none';
+    document.getElementById('mtools').style.display = 'none';
+    document.getElementById('info').innerHTML = 'Could not colour the world depth<br>Showing GEBCO shaded relief';
+  }
+});
+function worldLayer() { return worldFallback ? gebcoShaded : worldDepth; }
+
+/* العمق عند النقر في وضع العالم */
+function worldDepthAt(latlng) {
+  return new Promise(function (resolve) {
+    var z = 10, n = Math.pow(2, z);
+    var xf = (latlng.lng + 180) / 360 * n;
+    var lr = latlng.lat * Math.PI / 180;
+    var yf = (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * n;
+    var tx = Math.floor(xf), ty = Math.floor(yf);
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      try {
+        var cv = document.createElement('canvas');
+        cv.width = 256; cv.height = 256;
+        var cx = cv.getContext('2d');
+        cx.drawImage(img, 0, 0);
+        var px = Math.min(255, Math.floor((xf - tx) * 256)), py = Math.min(255, Math.floor((yf - ty) * 256));
+        var d = cx.getImageData(px, py, 1, 1).data;
+        var e = d[0] * 256 + d[1] + d[2] / 256 - 32768;
+        resolve(e < 0 ? 'Depth: about ' + Math.round(-e) + ' m' : '');
+      } catch (err) { resolve(''); }
+    };
+    img.onerror = function () { resolve(''); };
+    img.src = TERR_URL.replace('{z}', z).replace('{x}', tx).replace('{y}', ty);
+  });
+}
 
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 650;
@@ -181,24 +289,21 @@ depthStyled.on('tileerror', function () {
   }
 });
 
+function refreshDepth() {
+  applySld();
+  if (map.hasLayer(worldDepth)) worldDepth.redraw();
+}
 document.getElementById('mPal').onclick = function () {
   palIdx = (palIdx + 1) % PALETTES.length;
   buildCols();
   buildLegend();
-  applySld();
+  refreshDepth();
   document.getElementById('mPal').textContent = '🎨 ' + PALETTES[palIdx].name;
 };
 document.getElementById('mShade').onclick = function () {
-  if (mode === 'world') {
-    if (map.hasLayer(worldLayer())) map.removeLayer(worldLayer());
-    worldShade = !worldShade;
-    worldLayer().addTo(map);
-    document.getElementById('mShade').className = worldShade ? 'on' : '';
-    return;
-  }
   shadeOn = !shadeOn;
   document.getElementById('mShade').className = shadeOn ? 'on' : '';
-  applySld();
+  refreshDepth();
 };
 
 /* ===== تبديل الوضع: كلوروفيل / أعماق ===== */
@@ -213,8 +318,8 @@ function setMode(m) {
     if (map.hasLayer(contours)) map.removeLayer(contours);
   }
   if (!isWorld) {
+    if (map.hasLayer(worldDepth)) map.removeLayer(worldDepth);
     if (map.hasLayer(gebcoShaded)) map.removeLayer(gebcoShaded);
-    if (map.hasLayer(gebcoFlat)) map.removeLayer(gebcoFlat);
   }
   if (isChl) {
     if (chlLayer && !map.hasLayer(chlLayer)) chlLayer.addTo(map);
@@ -225,11 +330,11 @@ function setMode(m) {
     if (!map.hasLayer(worldLayer())) worldLayer().addTo(map);
   }
   document.getElementById('legend').style.display = isChl ? 'block' : 'none';
-  document.getElementById('mlegend').style.display = (isDepth && !usingFallback) ? 'block' : 'none';
-  document.getElementById('mtools').style.display = ((isDepth && !usingFallback) || isWorld) ? 'flex' : 'none';
-  document.getElementById('mPal').style.display = isWorld ? 'none' : '';
-  document.getElementById('mShade').className = (isWorld ? worldShade : shadeOn) ? 'on' : '';
-  document.getElementById('info').innerHTML = isChl ? chlInfo : (isWorld ? 'World depth map (GEBCO)<br>Lower detail than EMODnet' : (usingFallback ? 'Depth map (EMODnet colours)' : 'Depth map: one colour per 10 m<br>Source: EMODnet (Europe and Mediterranean)'));
+  var showTools = (isDepth && !usingFallback) || (isWorld && !worldFallback);
+  document.getElementById('mlegend').style.display = showTools ? 'block' : 'none';
+  document.getElementById('mtools').style.display = showTools ? 'flex' : 'none';
+  document.getElementById('mShade').className = shadeOn ? 'on' : '';
+  document.getElementById('info').innerHTML = isChl ? chlInfo : (isWorld ? (worldFallback ? 'World depth map (GEBCO)' : 'World depth map: one colour per 10 m<br>Lower detail than EMODnet') : (usingFallback ? 'Depth map (EMODnet colours)' : 'Depth map: one colour per 10 m<br>Source: EMODnet (Europe and Mediterranean)'));
   document.getElementById('mChl').className = isChl ? 'on' : '';
   document.getElementById('mDepth').className = isDepth ? 'on' : '';
   document.getElementById('mWorld').className = isWorld ? 'on' : '';
@@ -340,7 +445,7 @@ map.on('click', function (e) {
     }
   }
   var popup = L.popup({maxWidth: 270}).setLatLng(e.latlng).setContent(txt || 'Measuring depth...').openOn(map);
-  getDepth(e.latlng).then(function (dep) {
+  (mode === 'world' ? worldDepthAt(e.latlng) : getDepth(e.latlng)).then(function (dep) {
     var all = txt;
     if (dep) all = all ? all + '<br>' + dep : dep;
     if (!all) all = 'Depth not available here';
