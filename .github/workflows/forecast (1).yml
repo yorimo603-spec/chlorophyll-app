@@ -1,0 +1,30 @@
+{
+  "name": "Forecast update",
+  "on": {
+    "workflow_dispatch": {},
+    "schedule": [{"cron": "30 6 * * *"}]
+  },
+  "permissions": {"contents": "write"},
+  "jobs": {
+    "forecast": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {"uses": "actions/checkout@v4"},
+        {"uses": "actions/setup-python@v5", "with": {"python-version": "3.11"}},
+        {"name": "Install", "run": "pip install copernicusmarine xarray netCDF4 numpy"},
+        {
+          "name": "Fetch forecast",
+          "run": "python backend/fetch_phy.py",
+          "env": {
+            "COPERNICUS_USERNAME": "${{ secrets.COPERNICUS_USERNAME }}",
+            "COPERNICUS_PASSWORD": "${{ secrets.COPERNICUS_PASSWORD }}"
+          }
+        },
+        {
+          "name": "Commit result",
+          "run": "git config user.name github-actions && git config user.email actions@github.com && git add docs/forecast_latest.json && (git diff --cached --quiet || git commit -m 'Update forecast') && git push"
+        }
+      ]
+    }
+  }
+}
