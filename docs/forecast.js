@@ -12,7 +12,7 @@
 
   // ألوان التيارات بالعقدة، وألوان الأمواج بالمتر
   var CUR_STOPS = [[0, '#3b82f6'], [0.3, '#22d3ee'], [0.6, '#4ade80'], [1, '#facc15'], [1.5, '#fb923c'], [2, '#ef4444']];
-  var WAV_STOPS = [[0, '#60a5fa'], [0.5, '#34d399'], [1, '#a3e635'], [2, '#facc15'], [3, '#fb923c'], [4, '#ef4444']];
+  var WAV_STOPS = [[0, '#f8fafc'], [1, '#fbcfe8'], [2, '#f472b6'], [3, '#d946ef'], [4, '#a855f7']];
 
   /* ---------- الألوان ---------- */
   function hex2rgb(h) {
@@ -243,33 +243,35 @@
   function buildUI() {
     var st = document.createElement('style');
     st.textContent =
-      '#fpanel{left:50%;transform:translateX(-50%);bottom:105px;width:min(92vw,420px);box-sizing:border-box;z-index:1001;font-size:13px}' +
-      '#fpanel .frow{display:flex;gap:6px;align-items:center;margin:3px 0}' +
-      '#fpanel .frow button{flex:1;padding:8px 6px;font-size:14px}' +
-      '#fpanel .ft{text-align:center;font-size:12px;margin-top:4px}' +
-      '#fpanel .fbar{height:10px;border-radius:4px;margin:3px 0 1px}' +
-      '#fpanel .fnums{display:flex;justify-content:space-between;direction:ltr;font-size:11px}' +
+      '#fpanel{left:50%;transform:translateX(-50%);bottom:105px;width:min(92vw,380px);box-sizing:border-box;z-index:1001;font-size:12px;padding:6px 8px}' +
+      '#fpanel .frow{display:flex;gap:6px;align-items:center;margin:2px 0}' +
+      '#fpanel .frow button{flex:1;padding:6px 4px;font-size:13px}' +
+      '#fpanel .ft{text-align:center;font-size:11px;margin-top:3px}' +
+      '#fpanel .fbar{height:8px;border-radius:4px;margin:2px 0 1px}' +
+      '#fpanel .fnums{display:flex;justify-content:space-between;direction:ltr;font-size:10px}' +
       '#fSlider{flex:1;min-width:0}' +
-      '#fTime{min-width:82px;text-align:center;font-size:12px}' +
-      '#fread{font-size:12px;line-height:1.5;margin-top:3px}';
+      '#fTime{min-width:74px;text-align:center;font-size:11px}' +
+      '#fread{font-size:12px;line-height:1.5;margin-top:2px}';
     document.head.appendChild(st);
     var p = document.createElement('div');
     p.id = 'fpanel';
     p.className = 'box';
     p.innerHTML =
-      '<div class="frow"><button id="fbCur" disabled>🌀 التيارات</button><button id="fbWav" disabled>🌊 الأمواج</button></div>' +
-      '<div id="flegCur" style="display:none"></div>' +
-      '<div id="flegWav" style="display:none"></div>' +
-      '<div class="frow"><button id="fPlay" style="flex:0 0 42px">⏸</button>' +
+      '<div class="frow"><button id="fbCur" disabled>🌀 التيارات</button><button id="fbWav" disabled>🌊 الأمواج</button>' +
+      '<button id="fbHide" style="flex:0 0 36px;display:none">▾</button></div>' +
+      '<div id="fbody" style="display:none">' +
+      '<div id="fleg"></div>' +
+      '<div class="frow"><button id="fPlay" style="flex:0 0 38px">⏸</button>' +
       '<input id="fSlider" type="range" min="0" max="1" step="0.01" value="0"><span id="fTime">جاري تحميل التوقعات...</span></div>' +
-      '<div id="fread">اضغط على الخريطة لقراءة سرعة التيار وارتفاع الموج.</div>';
+      '<div id="fread"></div></div>';
     document.body.appendChild(p);
     return {
       panel: p,
       bCur: document.getElementById('fbCur'),
       bWav: document.getElementById('fbWav'),
-      legCur: document.getElementById('flegCur'),
-      legWav: document.getElementById('flegWav'),
+      bHide: document.getElementById('fbHide'),
+      body: document.getElementById('fbody'),
+      leg: document.getElementById('fleg'),
       play: document.getElementById('fPlay'),
       slider: document.getElementById('fSlider'),
       time: document.getElementById('fTime'),
@@ -299,10 +301,15 @@
 
     ui.slider.max = nF;
     ui.slider.value = st.f;
-    ui.legCur.innerHTML = legendHTML('سرعة التيار (عقدة)', CUR_STOPS, ['0', '0.5', '1', '1.5', '2+']);
-    ui.legWav.innerHTML = legendHTML('ارتفاع الموج (متر)', WAV_STOPS, ['0', '1', '2', '3', '4+']);
+    var LEG = {
+      cur: legendHTML('سرعة التيار (عقدة)', CUR_STOPS, ['0', '0.5', '1', '1.5', '2+']),
+      wav: legendHTML('ارتفاع الموج (متر)', WAV_STOPS, ['0', '1', '2', '3', '4+'])
+    };
+    var HINT = 'اضغط على الخريطة لقراءة القيمة.';
     if (cur) ui.bCur.disabled = false;
     if (wav) ui.bWav.disabled = false;
+    st.layer = null;
+    st.min = false;
 
     var lastLabel = '';
     function updateTime() {
@@ -312,15 +319,30 @@
     }
     updateTime();
 
-    function toggle(flow, btn, leg) {
-      if (!flow) return;
-      flow.on = !flow.on;
-      btn.className = flow.on ? 'on' : '';
-      leg.style.display = flow.on ? 'block' : 'none';
-      if (flow.on) flow.reset(); else flow.clear();
+    function refresh() {
+      ui.body.style.display = (st.layer && !st.min) ? 'block' : 'none';
+      ui.bHide.style.display = st.layer ? '' : 'none';
+      ui.bHide.textContent = st.min ? '▴' : '▾';
     }
-    ui.bCur.onclick = function () { toggle(curFlow, ui.bCur, ui.legCur); };
-    ui.bWav.onclick = function () { toggle(wavFlow, ui.bWav, ui.legWav); };
+    // طبقة واحدة فقط في كل مرة
+    function setLayer(w) {
+      var items = [['cur', curFlow, ui.bCur], ['wav', wavFlow, ui.bWav]];
+      for (var i = 0; i < items.length; i++) {
+        var flow = items[i][1], on = (items[i][0] === w);
+        if (!flow) continue;
+        if (on && !flow.on) { flow.on = true; flow.reset(); }
+        if (!on && flow.on) { flow.on = false; flow.clear(); }
+        items[i][2].className = on ? 'on' : '';
+      }
+      st.layer = w;
+      ui.leg.innerHTML = w ? LEG[w] : '';
+      ui.read.innerHTML = w ? HINT : '';
+      if (w) st.min = false;
+      refresh();
+    }
+    ui.bCur.onclick = function () { setLayer(st.layer === 'cur' ? null : 'cur'); };
+    ui.bWav.onclick = function () { setLayer(st.layer === 'wav' ? null : 'wav'); };
+    ui.bHide.onclick = function () { st.min = !st.min; refresh(); };
     ui.play.onclick = function () {
       st.playing = !st.playing;
       ui.play.textContent = st.playing ? '⏸' : '▶';
@@ -329,6 +351,7 @@
       st.f = parseFloat(ui.slider.value);
       updateTime();
     };
+    refresh();
 
     // اللوحة فوق الخريطة، فنمنع انتقال اللمس إلى الخريطة
     if (window.L && L.DomEvent) {
