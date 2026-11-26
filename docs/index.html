@@ -33,7 +33,7 @@ body #fbody{background:rgba(255,255,255,.95);padding:6px 8px;border-radius:10px;
 <button id="mChl" class="on"><span>🟢</span>الكلوروفيل</button>
 <button id="mCur"><span>🌀</span>التيارات</button>
 <button id="mWav"><span>🌊</span>الأمواج</button>
-<button class="soon" onclick="alert('قريباً')"><span>🌡️</span>الحرارة</button>
+<button id="mTemp"><span>🌡️</span>الحرارة</button>
 <button class="soon" onclick="alert('قريباً')"><span>💨</span>الرياح</button>
 </div>
 
@@ -45,25 +45,41 @@ body #fbody{background:rgba(255,255,255,.95);padding:6px 8px;border-radius:10px;
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="forecast.js?v=2"></script>
+<script src="temp.js?v=1"></script>
 <script src="app.js?v=6"></script>
 <script>
 (function(){
-var mc=document.getElementById('mCur'),mw=document.getElementById('mWav'),mh=document.getElementById('mChl');
+var mh=document.getElementById('mChl'),mc=document.getElementById('mCur'),mw=document.getElementById('mWav'),mt=document.getElementById('mTemp');
+function isOn(id){var b=document.getElementById(id);return !!(b&&b.className==='on');}
+function tempOn(){return !!(window.TEMP&&TEMP.isOn());}
+function chlOn(){return !!(window.chlLayer&&map.hasLayer(chlLayer));}
+function click(id){var b=document.getElementById(id);if(b&&!b.disabled){b.click();}}
 function sync(){
-var c=document.getElementById('fbCur'),w=document.getElementById('fbWav');
-mc.className=(c&&c.className==='on')?'on':'';
-mw.className=(w&&w.className==='on')?'on':'';
+mc.className=isOn('fbCur')?'on':'';
+mw.className=isOn('fbWav')?'on':'';
+mt.className=tempOn()?'on':'';
+mh.className=chlOn()?'on':'';
+document.getElementById('legend').style.display=chlOn()?'block':'none';
 }
-function pick(id){var b=document.getElementById(id);if(b&&!b.disabled){b.click();}setTimeout(sync,60);}
-mc.onclick=function(){pick('fbCur')};
-mw.onclick=function(){pick('fbWav')};
-function syncChl(){mh.className=(window.chlLayer&&map.hasLayer(chlLayer))?'on':'';}
+mc.onclick=function(){if(tempOn())TEMP.off();click('fbCur');setTimeout(sync,60);};
+mw.onclick=function(){if(tempOn())TEMP.off();click('fbWav');setTimeout(sync,60);};
+mt.onclick=function(){
+if(!window.TEMP){alert('ملف temp.js غير موجود');return;}
+if(!tempOn()){
+if(isOn('fbCur'))click('fbCur');
+if(isOn('fbWav'))click('fbWav');
+if(chlOn())map.removeLayer(chlLayer);
+}
+TEMP.toggle();
+setTimeout(sync,60);
+};
 mh.onclick=function(){
 if(!window.chlLayer)return;
-if(map.hasLayer(chlLayer)){map.removeLayer(chlLayer);}else{chlLayer.addTo(map);}
-syncChl();
+if(tempOn())TEMP.off();
+if(chlOn()){map.removeLayer(chlLayer);}else{chlLayer.addTo(map);}
+sync();
 };
-setInterval(syncChl,700);
+setInterval(sync,700);
 })();
 </script>
 </body>
