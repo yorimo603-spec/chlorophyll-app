@@ -9,9 +9,9 @@
 html,body{margin:0;height:100%;font-family:sans-serif}
 #map{height:100%}
 .box{position:absolute;z-index:1000;background:rgba(255,255,255,.92);padding:8px 12px;border-radius:10px;font-size:14px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
-#info{bottom:80px;left:10px;font-size:12px;max-width:calc(100vw - 280px)}
-#legend{bottom:80px;right:10px}
-#dlegend{bottom:80px;right:10px;display:none;font-size:12px}
+#legend{top:10px;left:58px;right:auto;bottom:auto}
+#info{top:86px;left:58px;bottom:auto;font-size:11px;max-width:calc(100vw - 130px)}
+#dlegend{top:10px;left:58px;right:auto;bottom:auto;display:none;font-size:12px}
 #dtitle{text-align:center;margin-bottom:4px}
 #dwrap{display:flex;direction:ltr;gap:6px;align-items:stretch}
 #dcol{display:flex;flex-direction:column;width:22px}
@@ -24,11 +24,14 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 #modes button span{font-size:20px}
 #modes button.soon{opacity:.45}
 #modes #bSet{flex:0 0 46px}
-#dtools{bottom:80px;left:50%;transform:translateX(-50%);display:none;gap:6px;padding:6px}
+#dtools{bottom:88px;left:50%;transform:translateX(-50%);display:none;gap:6px;padding:6px}
 .box button{border:0;border-radius:8px;padding:9px 14px;font-size:15px;background:#e5e7eb;color:#111}
 .box button.on{background:#0b63d6;color:#fff}
 #dtools button{font-size:13px;padding:7px 10px}
 .leaflet-control-layers{direction:rtl;text-align:right}
+body #fpanel.box{bottom:88px;background:none;box-shadow:none;padding:0;width:min(94vw,400px)}
+body #fpanel .frow:first-child{display:none}
+body #fbody{background:rgba(255,255,255,.95);padding:6px 8px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.4)}
 </style>
 </head>
 <body>
@@ -36,8 +39,10 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 <div id="map"></div>
 
 <div id="modes" class="box">
-<button id="bChl" class="on"><span>🌊</span>الكلوروفيل</button>
-<button id="bDepth"><span>📏</span>الأعماق</button>
+<button id="bChl" class="on" style="display:none"><span>🌊</span>الكلوروفيل</button>
+<button id="bDepth" style="display:none"><span>📏</span>الأعماق</button>
+<button id="mCur"><span>🌀</span>التيارات</button>
+<button id="mWav"><span>🌊</span>الأمواج</button>
 <button class="soon" onclick="alert('قريباً')"><span>🌡️</span>الحرارة</button>
 <button class="soon" onclick="alert('قريباً')"><span>💨</span>الرياح</button>
 <button id="bSet" onclick="var t=document.getElementById('dtools');t.style.display=(t.style.display==='flex')?'none':'flex'"><span>⚙️</span></button>
@@ -59,7 +64,20 @@ html,body{margin:0;height:100%;font-family:sans-serif}
 <div id="dwrap"><div id="dcol"></div><div id="dlab"></div></div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="forecast.js?v=1"></script>
+<script src="forecast.js?v=2"></script>
 <script src="app.js?v=6"></script>
+<script>
+(function(){
+var mc=document.getElementById('mCur'),mw=document.getElementById('mWav');
+function sync(){
+var c=document.getElementById('fbCur'),w=document.getElementById('fbWav');
+mc.className=(c&&c.className==='on')?'on':'';
+mw.className=(w&&w.className==='on')?'on':'';
+}
+function pick(id){var b=document.getElementById(id);if(b&&!b.disabled){b.click();}setTimeout(sync,60);}
+mc.onclick=function(){pick('fbCur')};
+mw.onclick=function(){pick('fbWav')};
+})();
+</script>
 </body>
 </html>
